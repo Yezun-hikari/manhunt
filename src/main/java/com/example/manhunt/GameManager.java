@@ -20,7 +20,7 @@ public class GameManager {
     private final Map<UUID, Role> playerRoles = new HashMap<>();
 
     // New fields
-    private int headStartSeconds = 0;
+    private int headStartSeconds;
     private Long customSeed = null;
     private boolean huntersReleased = false;
     private int currentHeadStart = 0;
@@ -31,6 +31,7 @@ public class GameManager {
     public GameManager(Main plugin) {
         this.plugin = plugin;
         this.currentState = GameState.LOBBY;
+        this.headStartSeconds = plugin.getConfig().getInt("default-headstart", 120);
 
         // Unified task for head start and respawns
         Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 20L, 20L);
@@ -43,7 +44,7 @@ public class GameManager {
     public void setObjective(Objective objective) { this.currentObjective = objective; }
 
     public int getHeadStartSeconds() { return headStartSeconds; }
-    public void setHeadStartSeconds(int seconds) { this.headStartSeconds = seconds; }
+    public void setHeadStartSeconds(int seconds) { this.headStartSeconds = Math.max(0, seconds); }
 
     public Long getCustomSeed() { return customSeed; }
     public void setCustomSeed(Long seed) { this.customSeed = seed; }
@@ -127,7 +128,7 @@ public class GameManager {
 
     public void startGame() {
         if (currentState != GameState.LOBBY) return;
-        if (currentObjective == null) {
+        if (currentObjective == null || !currentObjective.isValid()) {
             Bukkit.broadcastMessage("§cCannot start game: No objective set!");
             return;
         }
@@ -141,10 +142,12 @@ public class GameManager {
 
             teleportPlayersToGame();
 
-            Bukkit.broadcastMessage("§aManhunt started! Objective: " + currentObjective.toString());
+            Bukkit.broadcastMessage("§aManhunt started!");
             if (!huntersReleased) {
                 Bukkit.broadcastMessage("§eHunters will be released in " + headStartSeconds + " seconds.");
             }
+
+            updateScoreboard();
         });
     }
 
@@ -189,9 +192,10 @@ public class GameManager {
         playerRoles.clear();
         hunterCooldowns.clear();
         customSeed = null;
-        headStartSeconds = 0;
+        headStartSeconds = plugin.getConfig().getInt("default-headstart", 120);
         currentObjective = null;
         plugin.getTracker().clearPortalData();
+        updateScoreboard();
     }
 
     private void teleportPlayersToGame() {
@@ -242,6 +246,12 @@ public class GameManager {
 
         if (!aliveRunnerExists) {
             endGame(Role.HUNTER);
+        } else if (currentObjective != null && currentObjective.isCompleted()) {
+            endGame(Role.RUNNER);
         }
+    }
+
+    public void updateScoreboard() {
+        plugin.updateScoreboard();
     }
 }

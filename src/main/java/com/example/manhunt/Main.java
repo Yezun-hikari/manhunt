@@ -4,6 +4,12 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.scoreboard.Scoreboard;
+import org.bukkit.scoreboard.ScoreboardManager;
+import org.bukkit.scoreboard.Team;
+import org.bukkit.entity.Player;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 
 public class Main extends JavaPlugin {
 
@@ -11,6 +17,11 @@ public class Main extends JavaPlugin {
     private WorldManager worldManager;
     private Tracker tracker;
     private GUIManager guiManager;
+
+    private Scoreboard scoreboard;
+    private Team teamRunners;
+    private Team teamHunters;
+    private Team teamSpectators;
 
     @Override
     public void onEnable() {
@@ -20,6 +31,8 @@ public class Main extends JavaPlugin {
         worldManager = new WorldManager(this);
         tracker = new Tracker(this);
         guiManager = new GUIManager(this);
+
+        setupScoreboard();
 
         getServer().getPluginManager().registerEvents(new Events(this), this);
         getServer().getPluginManager().registerEvents(guiManager, this);
@@ -38,6 +51,43 @@ public class Main extends JavaPlugin {
             gameManager.endGame(Role.HUNTER); // Force end on reload/stop
         }
         getLogger().info("Manhunt plugin disabled!");
+    }
+
+    private void setupScoreboard() {
+        ScoreboardManager manager = Bukkit.getScoreboardManager();
+        scoreboard = manager.getNewScoreboard();
+
+        teamRunners = scoreboard.registerNewTeam("Runners");
+        teamRunners.color(NamedTextColor.GREEN);
+        teamRunners.prefix(Component.text("[Runner] ").color(NamedTextColor.GREEN));
+
+        teamHunters = scoreboard.registerNewTeam("Hunters");
+        teamHunters.color(NamedTextColor.RED);
+        teamHunters.prefix(Component.text("[Hunter] ").color(NamedTextColor.RED));
+
+        teamSpectators = scoreboard.registerNewTeam("Spectators");
+        teamSpectators.color(NamedTextColor.GRAY);
+        teamSpectators.prefix(Component.text("[Spec] ").color(NamedTextColor.GRAY));
+    }
+
+    public void updateScoreboard() {
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            p.setScoreboard(scoreboard);
+            Role r = gameManager.getRole(p);
+
+            // Remove from all first
+            teamRunners.removePlayer(p);
+            teamHunters.removePlayer(p);
+            teamSpectators.removePlayer(p);
+
+            if (r == Role.RUNNER) {
+                teamRunners.addPlayer(p);
+            } else if (r == Role.HUNTER) {
+                teamHunters.addPlayer(p);
+            } else {
+                teamSpectators.addPlayer(p);
+            }
+        }
     }
 
     public GameManager getGameManager() {

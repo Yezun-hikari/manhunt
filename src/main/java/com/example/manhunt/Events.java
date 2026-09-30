@@ -16,6 +16,7 @@ import org.bukkit.event.entity.FoodLevelChangeEvent;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
@@ -30,7 +31,7 @@ public class Events implements Listener {
         this.plugin = plugin;
     }
 
-    // Chat prompt for objectives & seeds
+    // Chat prompt for seeds
     @EventHandler
     public void onChat(AsyncPlayerChatEvent event) {
         Player player = event.getPlayer();
@@ -106,8 +107,19 @@ public class Events implements Listener {
     }
 
     @EventHandler
+    public void onCreatureSpawn(CreatureSpawnEvent event) {
+        if (plugin.getLobbyLocation().getWorld() != null) {
+            if (event.getEntity().getWorld().equals(plugin.getLobbyLocation().getWorld())) {
+                event.setCancelled(true);
+            }
+        }
+    }
+
+    @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
+        plugin.getGameManager().updateScoreboard();
+
         if (plugin.getGameManager().getState() == GameState.PLAYING) {
             if (plugin.getGameManager().getRole(player) == Role.SPECTATOR) {
                 // Late joiner or explicitly set to spectator
@@ -211,11 +223,12 @@ public class Events implements Listener {
         Objective obj = plugin.getGameManager().getObjective();
 
         if (obj != null && obj.getType() == ObjectiveType.MOB) {
-            if (event.getEntity().getType() == obj.getTargetMob()) {
+            if (obj.getMobRequirement(event.getEntity().getType()) > 0) {
                 if (event.getEntity().getKiller() != null) {
                     Player killer = event.getEntity().getKiller();
                     if (plugin.getGameManager().getRole(killer) == Role.RUNNER) {
-                        plugin.getGameManager().endGame(Role.RUNNER);
+                        obj.addProgress(event.getEntity().getType(), 1);
+                        plugin.getGameManager().checkWinCondition();
                     }
                 }
             }
@@ -252,10 +265,33 @@ public class Events implements Listener {
         Objective obj = plugin.getGameManager().getObjective();
 
         if (obj != null && obj.getType() == ObjectiveType.ITEM) {
-            if (item.getType() == obj.getTargetItem()) {
-                // Must wrap in task so we don't end game mid-event
+            if (obj.getItemRequirement(item.getType()) > 0) {
+                // Actually wait, for items, do we accumulate pickups?
+                // It's safer to just iterate over all runners inventories and sum up the totals periodically or on event.
+                // Let's do it via task.
                 Bukkit.getScheduler().runTask(plugin, () -> {
-                    plugin.getGameManager().endGame(Role.RUNNER);
+                    boolean won = true;
+                    for (Material mat : org.bukkit.Material.values()) {
+                        if (obj.getItemRequirement(mat) > 0) {
+                            int total = 0;
+                            for (Player p : Bukkit.getOnlinePlayers()) {
+                                if (plugin.getGameManager().getRole(p) == Role.RUNNER && !p.isDead()) {
+                                    for (ItemStack invItem : p.getInventory().getContents()) {
+                                        if (invItem != null && invItem.getType() == mat) {
+                                            total += invItem.getAmount();
+                                        }
+                                    }
+                                }
+                            }
+                            if (total < obj.getItemRequirement(mat)) {
+                                won = false;
+                                break;
+                            }
+                        }
+                    }
+                    if (won) {
+                        plugin.getGameManager().endGame(Role.RUNNER);
+                    }
                 });
             }
         }

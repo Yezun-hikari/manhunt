@@ -8,3 +8,5 @@ lobby:
 
 cooldowns:
   hunter-respawn-seconds: 30
+
+default-headstart: 120

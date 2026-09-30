@@ -57,11 +57,10 @@ public class GUIManager implements Listener {
 
         int slot = 0;
         for (Player p : Bukkit.getOnlinePlayers()) {
-            if (slot >= 45) break; // limit to prevent overflow in simple GUI
+            if (slot >= 45) break;
 
             Role r = plugin.getGameManager().getRole(p);
 
-            // Player head
             ItemStack head = new ItemStack(Material.PLAYER_HEAD);
             SkullMeta meta = (SkullMeta) head.getItemMeta();
             if (meta != null) {
@@ -76,37 +75,25 @@ public class GUIManager implements Listener {
                 }
                 head.setItemMeta(meta);
             }
-            inv.setItem(slot, head);
 
-            // Colored glass pane below head for immediate visual recognition
             Material paneMat = Material.GRAY_STAINED_GLASS_PANE;
             if (r == Role.RUNNER) paneMat = Material.LIME_STAINED_GLASS_PANE;
             else if (r == Role.HUNTER) paneMat = Material.RED_STAINED_GLASS_PANE;
 
-            // We place the pane in the slot right below the head (slot + 9)
-            // But we must be careful with grid layout. So we just fill alternating rows or let's just make the item itself glowing.
-            // Wait, the prompt said: "Löse das z.B., indem du farbige Glasscheiben hinter/unter die Köpfe packst, den Köpfen einen Glow/Enchantment-Effekt gibst".
-            // We added the glow effect above. Let's place the glass pane immediately after the head in the inventory.
-            // Or better yet, heads on even slots, panes on odd slots? No, heads on row 0, panes on row 1.
-
-            // Let's restructure the loop to place heads on rows 0, 2 and panes on rows 1, 3.
             int row = (slot / 9);
             int col = slot % 9;
 
-            // Place head
             inv.setItem(row * 18 + col, head);
-            // Place pane below
             inv.setItem(row * 18 + col + 9, createGuiItem(paneMat, "§7Status Indicator"));
 
             slot++;
-            if (slot >= 18) break; // Can only fit 18 players with this layout in 54-size GUI (rows 0,1 and 2,3)
+            if (slot >= 18) break;
         }
         player.openInventory(inv);
     }
 
     public void openPlayerRoleMenu(Player player, String targetName) {
         String title = PLAYER_ROLE_TITLE + targetName;
-        // Keep it under 32 chars
         if (title.length() > 32) title = title.substring(0, 32);
 
         GUIHolder holder = new GUIHolder(title);
@@ -129,10 +116,15 @@ public class GUIManager implements Listener {
         int currentHeadStart = plugin.getGameManager().getHeadStartSeconds();
         Long currentSeed = plugin.getGameManager().getCustomSeed();
 
-        inv.setItem(11, createGuiItem(Material.CLOCK, "§bHead-start: " + currentHeadStart + "s", "Left-Click: +10s", "Right-Click: -10s"));
+        inv.setItem(10, createGuiItem(Material.RED_DYE, "§c-1 Minute", "Subtracts 60 seconds"));
+        inv.setItem(11, createGuiItem(Material.ORANGE_DYE, "§6-10 Seconds", "Subtracts 10 seconds"));
+        inv.setItem(12, createGuiItem(Material.CLOCK, "§bHead-start: " + currentHeadStart + "s", "Current Timer"));
+        inv.setItem(13, createGuiItem(Material.YELLOW_DYE, "§e+10 Seconds", "Adds 10 seconds"));
+        inv.setItem(14, createGuiItem(Material.LIME_DYE, "§a+1 Minute", "Adds 60 seconds"));
+        inv.setItem(15, createGuiItem(Material.BARRIER, "§cReset Timer", "Resets to default"));
 
         String seedText = currentSeed == null ? "Random" : String.valueOf(currentSeed);
-        inv.setItem(15, createGuiItem(Material.GRASS_BLOCK, "§bTemp Seed: " + seedText, "Click to set a custom seed in chat"));
+        inv.setItem(22, createGuiItem(Material.GRASS_BLOCK, "§bTemp Seed: " + seedText, "Click to set a custom seed in chat"));
 
         inv.setItem(18, createGuiItem(Material.OAK_DOOR, "§cBack"));
 
@@ -144,8 +136,18 @@ public class GUIManager implements Listener {
         Inventory inv = Bukkit.createInventory(holder, 27, OBJ_TYPE_TITLE);
         holder.setInventory(inv);
 
-        inv.setItem(11, createGuiItem(Material.DIAMOND, "§bItem Objective"));
-        inv.setItem(15, createGuiItem(Material.ZOMBIE_HEAD, "§cMob Objective"));
+        Objective obj = plugin.getGameManager().getObjective();
+        boolean isItem = obj != null && obj.getType() == ObjectiveType.ITEM;
+        boolean isMob = obj != null && obj.getType() == ObjectiveType.MOB;
+
+        ItemStack itemOpt = createGuiItem(Material.DIAMOND, "§bItem Objective");
+        if (isItem) addGlow(itemOpt);
+
+        ItemStack mobOpt = createGuiItem(Material.ZOMBIE_HEAD, "§cMob Objective");
+        if (isMob) addGlow(mobOpt);
+
+        inv.setItem(11, itemOpt);
+        inv.setItem(15, mobOpt);
 
         inv.setItem(18, createGuiItem(Material.OAK_DOOR, "§cBack"));
         player.openInventory(inv);
@@ -153,32 +155,69 @@ public class GUIManager implements Listener {
 
     public void openObjItemMenu(Player player) {
         GUIHolder holder = new GUIHolder(OBJ_ITEM_TITLE);
-        Inventory inv = Bukkit.createInventory(holder, 27, OBJ_ITEM_TITLE);
+        Inventory inv = Bukkit.createInventory(holder, 54, OBJ_ITEM_TITLE);
         holder.setInventory(inv);
+        Objective obj = plugin.getGameManager().getObjective();
 
-        inv.setItem(10, createGuiItem(Material.DIAMOND, "§bDiamond"));
-        inv.setItem(11, createGuiItem(Material.NETHERITE_INGOT, "§bNetherite Ingot"));
-        inv.setItem(12, createGuiItem(Material.DRAGON_EGG, "§bDragon Egg"));
-        inv.setItem(13, createGuiItem(Material.BEACON, "§bBeacon"));
-        inv.setItem(14, createGuiItem(Material.NETHER_STAR, "§bNether Star"));
-        inv.setItem(15, createGuiItem(Material.ENDER_EYE, "§bEye of Ender"));
-        inv.setItem(16, createGuiItem(Material.BLAZE_ROD, "§bBlaze Rod"));
+        Material[] easy = {Material.IRON_INGOT, Material.GOLD_INGOT, Material.SLIME_BALL, Material.EMERALD};
+        Material[] medium = {Material.DIAMOND, Material.ENDER_PEARL, Material.GOLDEN_CARROT, Material.TRIDENT};
+        Material[] hard = {Material.NETHERITE_INGOT, Material.TOTEM_OF_UNDYING, Material.ELYTRA, Material.BEACON, Material.ENCHANTED_GOLDEN_APPLE};
 
-        inv.setItem(18, createGuiItem(Material.OAK_DOOR, "§cBack"));
+        int slot = 0;
+        for (Material m : easy) addItemToMenu(inv, slot++, m, "EASY", obj);
+        slot = 9;
+        for (Material m : medium) addItemToMenu(inv, slot++, m, "MEDIUM", obj);
+        slot = 18;
+        for (Material m : hard) addItemToMenu(inv, slot++, m, "HARD", obj);
+
+        inv.setItem(45, createGuiItem(Material.OAK_DOOR, "§cBack"));
         player.openInventory(inv);
     }
 
     public void openObjMobMenu(Player player) {
         GUIHolder holder = new GUIHolder(OBJ_MOB_TITLE);
-        Inventory inv = Bukkit.createInventory(holder, 27, OBJ_MOB_TITLE);
+        Inventory inv = Bukkit.createInventory(holder, 54, OBJ_MOB_TITLE);
         holder.setInventory(inv);
+        Objective obj = plugin.getGameManager().getObjective();
 
-        inv.setItem(11, createGuiItem(Material.DRAGON_HEAD, "§cEnder Dragon"));
-        inv.setItem(13, createGuiItem(Material.WITHER_SKELETON_SKULL, "§cWither"));
-        inv.setItem(15, createGuiItem(Material.ZOMBIE_HEAD, "§cZombie")); // Just for testing
+        EntityType[] easy = {EntityType.COW, EntityType.BEE, EntityType.GOAT, EntityType.ARMADILLO, EntityType.PILLAGER};
+        EntityType[] medium = {EntityType.ENDERMAN, EntityType.WITCH, EntityType.SHULKER, EntityType.SLIME};
+        EntityType[] hard = {EntityType.WITHER_SKELETON, EntityType.WITHER, EntityType.ENDER_DRAGON};
 
-        inv.setItem(18, createGuiItem(Material.OAK_DOOR, "§cBack"));
+        int slot = 0;
+        for (EntityType m : easy) addMobToMenu(inv, slot++, m, "EASY", obj);
+        slot = 9;
+        for (EntityType m : medium) addMobToMenu(inv, slot++, m, "MEDIUM", obj);
+        slot = 18;
+        for (EntityType m : hard) addMobToMenu(inv, slot++, m, "HARD", obj);
+
+        inv.setItem(45, createGuiItem(Material.OAK_DOOR, "§cBack"));
         player.openInventory(inv);
+    }
+
+    private void addItemToMenu(Inventory inv, int slot, Material m, String diff, Objective obj) {
+        int req = obj != null ? obj.getItemRequirement(m) : 0;
+        ItemStack item = createGuiItem(m, "§b" + m.name(), "§7Difficulty: " + diff, "§eRequired: " + req, "§7Left-Click: +1", "§7Right-Click: -1");
+        if (req > 0) addGlow(item);
+        inv.setItem(slot, item);
+        inv.setItem(slot + 27, createGuiItem(req > 0 ? Material.LIME_STAINED_GLASS_PANE : Material.GRAY_STAINED_GLASS_PANE, "§7Status Indicator"));
+    }
+
+    private void addMobToMenu(Inventory inv, int slot, EntityType m, String diff, Objective obj) {
+        Material display = Material.ZOMBIE_HEAD;
+        if (m == EntityType.COW) display = Material.BEEF;
+        else if (m == EntityType.BEE) display = Material.HONEYCOMB;
+        else if (m == EntityType.ENDERMAN) display = Material.ENDER_PEARL;
+        else if (m == EntityType.WITHER) display = Material.WITHER_SKELETON_SKULL;
+        else if (m == EntityType.ENDER_DRAGON) display = Material.DRAGON_HEAD;
+        // fallback
+        else display = Material.PAPER;
+
+        int req = obj != null ? obj.getMobRequirement(m) : 0;
+        ItemStack item = createGuiItem(display, "§c" + m.name(), "§7Difficulty: " + diff, "§eRequired: " + req, "§7Left-Click: +1", "§7Right-Click: -1");
+        if (req > 0) addGlow(item);
+        inv.setItem(slot, item);
+        inv.setItem(slot + 27, createGuiItem(req > 0 ? Material.LIME_STAINED_GLASS_PANE : Material.GRAY_STAINED_GLASS_PANE, "§7Status Indicator"));
     }
 
     public void openChatPromptMode(Player player, ObjectiveType type) {
@@ -198,6 +237,15 @@ public class GUIManager implements Listener {
         return item;
     }
 
+    private void addGlow(ItemStack item) {
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.addEnchant(Enchantment.UNBREAKING, 1, true);
+            meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
+            item.setItemMeta(meta);
+        }
+    }
+
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
         Inventory inv = event.getInventory();
@@ -211,7 +259,6 @@ public class GUIManager implements Listener {
         ItemStack clicked = event.getCurrentItem();
         if (clicked == null || clicked.getType() == Material.AIR) return;
 
-        // Back button check
         if (clicked.getType() == Material.OAK_DOOR && clicked.getItemMeta().getDisplayName().contains("Back")) {
             openMainMenu(player);
             return;
@@ -226,17 +273,14 @@ public class GUIManager implements Listener {
                 plugin.getGameManager().startGame();
             }
         } else if (title.equals(CONFIG_TITLE)) {
-            if (clicked.getType() == Material.CLOCK) {
-                int current = plugin.getGameManager().getHeadStartSeconds();
-                if (event.isLeftClick()) {
-                    plugin.getGameManager().setHeadStartSeconds(current + 10);
-                } else if (event.isRightClick()) {
-                    if (current >= 10) plugin.getGameManager().setHeadStartSeconds(current - 10);
-                }
-                openConfigMenu(player);
-            } else if (clicked.getType() == Material.GRASS_BLOCK) {
-                openChatPromptMode(player, ObjectiveType.SEED);
-            }
+            int current = plugin.getGameManager().getHeadStartSeconds();
+            if (clicked.getType() == Material.RED_DYE) plugin.getGameManager().setHeadStartSeconds(current - 60);
+            else if (clicked.getType() == Material.ORANGE_DYE) plugin.getGameManager().setHeadStartSeconds(current - 10);
+            else if (clicked.getType() == Material.YELLOW_DYE) plugin.getGameManager().setHeadStartSeconds(current + 10);
+            else if (clicked.getType() == Material.LIME_DYE) plugin.getGameManager().setHeadStartSeconds(current + 60);
+            else if (clicked.getType() == Material.BARRIER) plugin.getGameManager().setHeadStartSeconds(plugin.getConfig().getInt("default-headstart", 120));
+            else if (clicked.getType() == Material.GRASS_BLOCK) openChatPromptMode(player, ObjectiveType.SEED);
+            openConfigMenu(player);
         } else if (title.equals(ROLES_TITLE)) {
             if (clicked.getType() == Material.IRON_SWORD && clicked.getItemMeta().getDisplayName().contains("Mass Assign")) {
                 int count = 0;
@@ -247,9 +291,10 @@ public class GUIManager implements Listener {
                     }
                 }
                 player.sendMessage("§aAssigned " + count + " players to Hunter.");
+                plugin.updateScoreboard();
                 openRolesMenu(player);
             } else if (clicked.getType() == Material.PLAYER_HEAD) {
-                String targetName = clicked.getItemMeta().getDisplayName().substring(2); // Remove color codes
+                String targetName = clicked.getItemMeta().getDisplayName().substring(2);
                 openPlayerRoleMenu(player, targetName);
             }
         } else if (title.startsWith(PLAYER_ROLE_TITLE)) {
@@ -266,25 +311,50 @@ public class GUIManager implements Listener {
                     plugin.getGameManager().setRole(target, Role.SPECTATOR);
                     player.sendMessage("§7Set " + targetName + " as Spectator.");
                 }
+                plugin.updateScoreboard();
             }
             openRolesMenu(player);
         } else if (title.equals(OBJ_TYPE_TITLE)) {
-            if (clicked.getType() == Material.DIAMOND) openObjItemMenu(player);
-            else if (clicked.getType() == Material.ZOMBIE_HEAD) openObjMobMenu(player);
+            if (clicked.getType() == Material.DIAMOND) {
+                if (plugin.getGameManager().getObjective() == null) plugin.getGameManager().setObjective(new Objective());
+                plugin.getGameManager().getObjective().setType(ObjectiveType.ITEM);
+                openObjItemMenu(player);
+            }
+            else if (clicked.getType() == Material.ZOMBIE_HEAD) {
+                if (plugin.getGameManager().getObjective() == null) plugin.getGameManager().setObjective(new Objective());
+                plugin.getGameManager().getObjective().setType(ObjectiveType.MOB);
+                openObjMobMenu(player);
+            }
         } else if (title.equals(OBJ_ITEM_TITLE)) {
-            plugin.getGameManager().setObjective(new Objective(clicked.getType()));
-            player.sendMessage("§aObjective set to: " + clicked.getType().name());
-            openMainMenu(player);
+            Material m = clicked.getType();
+            if (m != Material.LIME_STAINED_GLASS_PANE && m != Material.GRAY_STAINED_GLASS_PANE && m != Material.OAK_DOOR) {
+                Objective obj = plugin.getGameManager().getObjective();
+                if (obj != null) {
+                    // Extract material name from display name (stripping colors)
+                    String name = clicked.getItemMeta().getDisplayName().substring(2);
+                    try {
+                        Material target = Material.valueOf(name);
+                        int current = obj.getItemRequirement(target);
+                        if (event.isLeftClick()) obj.setItemRequirement(target, current + 1);
+                        else if (event.isRightClick()) obj.setItemRequirement(target, Math.max(0, current - 1));
+                    } catch (Exception e) {}
+                    openObjItemMenu(player);
+                }
+            }
         } else if (title.equals(OBJ_MOB_TITLE)) {
-            EntityType type = null;
-            if (clicked.getType() == Material.DRAGON_HEAD) type = EntityType.ENDER_DRAGON;
-            else if (clicked.getType() == Material.WITHER_SKELETON_SKULL) type = EntityType.WITHER;
-            else if (clicked.getType() == Material.ZOMBIE_HEAD) type = EntityType.ZOMBIE;
-
-            if (type != null) {
-                plugin.getGameManager().setObjective(new Objective(type));
-                player.sendMessage("§aObjective set to: " + type.name());
-                openMainMenu(player);
+            Material m = clicked.getType();
+            if (m != Material.LIME_STAINED_GLASS_PANE && m != Material.GRAY_STAINED_GLASS_PANE && m != Material.OAK_DOOR) {
+                Objective obj = plugin.getGameManager().getObjective();
+                if (obj != null) {
+                    String name = clicked.getItemMeta().getDisplayName().substring(2);
+                    try {
+                        EntityType target = EntityType.valueOf(name);
+                        int current = obj.getMobRequirement(target);
+                        if (event.isLeftClick()) obj.setMobRequirement(target, current + 1);
+                        else if (event.isRightClick()) obj.setMobRequirement(target, Math.max(0, current - 1));
+                    } catch (Exception e) {}
+                    openObjMobMenu(player);
+                }
             }
         }
     }
