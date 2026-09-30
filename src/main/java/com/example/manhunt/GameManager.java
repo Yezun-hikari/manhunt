@@ -1,10 +1,13 @@
 package com.example.manhunt;
 
+import net.kyori.adventure.title.Title;
+import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
+import org.bukkit.Sound;
 import org.bukkit.entity.Player;
-import org.bukkit.plugin.java.JavaPlugin;
 
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -16,26 +19,36 @@ public class GameManager {
 
     private final Map<UUID, Role> playerRoles = new HashMap<>();
 
+    // New fields
+    private int headStartSeconds = 0;
+    private Long customSeed = null;
+    private boolean huntersReleased = false;
+    private int currentHeadStart = 0;
+
+    // Maps UUID to remaining cooldown in seconds
+    private final Map<UUID, Integer> hunterCooldowns = new HashMap<>();
+
     public GameManager(Main plugin) {
         this.plugin = plugin;
         this.currentState = GameState.LOBBY;
+
+        // Unified task for head start and respawns
+        Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 20L, 20L);
     }
 
-    public GameState getState() {
-        return currentState;
-    }
+    public GameState getState() { return currentState; }
+    public void setState(GameState state) { this.currentState = state; }
 
-    public void setState(GameState state) {
-        this.currentState = state;
-    }
+    public Objective getObjective() { return currentObjective; }
+    public void setObjective(Objective objective) { this.currentObjective = objective; }
 
-    public Objective getObjective() {
-        return currentObjective;
-    }
+    public int getHeadStartSeconds() { return headStartSeconds; }
+    public void setHeadStartSeconds(int seconds) { this.headStartSeconds = seconds; }
 
-    public void setObjective(Objective objective) {
-        this.currentObjective = objective;
-    }
+    public Long getCustomSeed() { return customSeed; }
+    public void setCustomSeed(Long seed) { this.customSeed = seed; }
+
+    public boolean areHuntersReleased() { return huntersReleased; }
 
     public Role getRole(Player player) {
         return playerRoles.getOrDefault(player.getUniqueId(), Role.SPECTATOR);
@@ -49,6 +62,69 @@ public class GameManager {
         return playerRoles;
     }
 
+    public void addHunterCooldown(UUID uuid) {
+        int cooldown = plugin.getConfig().getInt("cooldowns.hunter-respawn-seconds", 30);
+        hunterCooldowns.put(uuid, cooldown);
+    }
+
+    public boolean hasCooldown(UUID uuid) {
+        return hunterCooldowns.containsKey(uuid);
+    }
+
+    private void tick() {
+        if (currentState == GameState.PLAYING) {
+            // Handle head start countdown
+            if (!huntersReleased && currentHeadStart > 0) {
+                currentHeadStart--;
+                if (currentHeadStart == 0) {
+                    huntersReleased = true;
+                    for (Player p : Bukkit.getOnlinePlayers()) {
+                        if (getRole(p) == Role.HUNTER) {
+                            p.teleport(plugin.getWorldManager().getGameWorld().getSpawnLocation());
+                            p.setGameMode(GameMode.SURVIVAL);
+                            plugin.getTracker().giveCompass(p);
+                        }
+                    }
+                    Bukkit.broadcastMessage("§cThe Hunters have been released!");
+                } else {
+                    for (Player p : Bukkit.getOnlinePlayers()) {
+                        if (getRole(p) == Role.HUNTER) {
+                            p.sendActionBar(Component.text("§cReleasing in " + currentHeadStart + "s"));
+                        }
+                    }
+                }
+            }
+
+            // Handle hunter death cooldowns
+            for (Map.Entry<UUID, Integer> entry : new HashMap<>(hunterCooldowns).entrySet()) {
+                UUID uuid = entry.getKey();
+                int time = entry.getValue();
+                Player p = Bukkit.getPlayer(uuid);
+
+                if (time > 0) {
+                    hunterCooldowns.put(uuid, time - 1);
+                    if (p != null && p.isOnline()) {
+                        Title title = Title.title(
+                            Component.text("§cRespawning in..."),
+                            Component.text("§e" + time + " seconds"),
+                            Title.Times.times(Duration.ZERO, Duration.ofSeconds(2), Duration.ZERO)
+                        );
+                        p.showTitle(title);
+                    }
+                } else {
+                    hunterCooldowns.remove(uuid);
+                    if (p != null && p.isOnline()) {
+                        p.teleport(plugin.getWorldManager().getGameWorld().getSpawnLocation());
+                        p.setGameMode(GameMode.SURVIVAL);
+                        plugin.getTracker().giveCompass(p);
+                        p.sendMessage("§aYou have respawned!");
+                        p.clearTitle(); // clears the custom title
+                    }
+                }
+            }
+        }
+    }
+
     public void startGame() {
         if (currentState != GameState.LOBBY) return;
         if (currentObjective == null) {
@@ -60,9 +136,15 @@ public class GameManager {
         Bukkit.broadcastMessage("§eGenerating world, please wait...");
         plugin.getWorldManager().generateWorld(() -> {
             setState(GameState.PLAYING);
+            huntersReleased = (headStartSeconds <= 0);
+            currentHeadStart = headStartSeconds;
+
             teleportPlayersToGame();
-            giveCompassToHunters();
+
             Bukkit.broadcastMessage("§aManhunt started! Objective: " + currentObjective.toString());
+            if (!huntersReleased) {
+                Bukkit.broadcastMessage("§eHunters will be released in " + headStartSeconds + " seconds.");
+            }
         });
     }
 
@@ -70,17 +152,32 @@ public class GameManager {
         if (currentState != GameState.PLAYING) return;
         setState(GameState.LOBBY);
 
-        String winMsg = winner == Role.RUNNER ? "§aRunners won!" : "§cHunters won!";
-        Bukkit.broadcastMessage(winMsg);
+        boolean runnerWon = winner == Role.RUNNER;
+        String winMsg = runnerWon ? "§aRunners won!" : "§cHunters won!";
+
+        Component titleComp = Component.text(winMsg);
+        Title title = Title.title(titleComp, Component.empty());
 
         for (Player player : Bukkit.getOnlinePlayers()) {
+            player.showTitle(title);
+
+            Role role = getRole(player);
+            boolean won = (role == winner);
+            if (role != Role.SPECTATOR) {
+                if (won) {
+                    player.playSound(player.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f);
+                } else {
+                    player.playSound(player.getLocation(), Sound.ENTITY_WITCH_DEATH, 1f, 1f);
+                }
+            }
+
             // Teleport to lobby
             player.teleport(plugin.getLobbyLocation());
             // Clear inventory
             player.getInventory().clear();
             player.getActivePotionEffects().forEach(effect -> player.removePotionEffect(effect.getType()));
             // Reset gamemode
-            if (getRole(player) == Role.RUNNER || getRole(player) == Role.HUNTER || getRole(player) == Role.SPECTATOR) {
+            if (role == Role.RUNNER || role == Role.HUNTER || role == Role.SPECTATOR) {
                 player.setGameMode(GameMode.SURVIVAL);
             }
         }
@@ -90,6 +187,9 @@ public class GameManager {
 
         // Reset state
         playerRoles.clear();
+        hunterCooldowns.clear();
+        customSeed = null;
+        headStartSeconds = 0;
         currentObjective = null;
         plugin.getTracker().clearPortalData();
     }
@@ -97,25 +197,31 @@ public class GameManager {
     private void teleportPlayersToGame() {
         for (Player player : Bukkit.getOnlinePlayers()) {
             Role role = getRole(player);
-            if (role == Role.RUNNER || role == Role.HUNTER) {
+            if (role == Role.RUNNER) {
                 player.teleport(plugin.getWorldManager().getGameWorld().getSpawnLocation());
                 player.getInventory().clear();
                 player.setGameMode(GameMode.SURVIVAL);
                 player.setHealth(20);
                 player.setFoodLevel(20);
                 player.setSaturation(5);
+            } else if (role == Role.HUNTER) {
+                player.getInventory().clear();
+                player.setHealth(20);
+                player.setFoodLevel(20);
+                player.setSaturation(5);
+                if (huntersReleased) {
+                    player.teleport(plugin.getWorldManager().getGameWorld().getSpawnLocation());
+                    player.setGameMode(GameMode.SURVIVAL);
+                    plugin.getTracker().giveCompass(player);
+                } else {
+                    // Stay in lobby
+                    player.teleport(plugin.getLobbyLocation());
+                    player.setGameMode(GameMode.SPECTATOR); // so they can't break anything
+                }
             } else {
                 // Spectators
                 player.teleport(plugin.getWorldManager().getGameWorld().getSpawnLocation());
                 player.setGameMode(GameMode.SPECTATOR);
-            }
-        }
-    }
-
-    private void giveCompassToHunters() {
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            if (getRole(player) == Role.HUNTER) {
-                plugin.getTracker().giveCompass(player);
             }
         }
     }

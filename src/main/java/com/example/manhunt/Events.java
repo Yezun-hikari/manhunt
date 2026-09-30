@@ -3,6 +3,7 @@ package com.example.manhunt;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Material;
+import org.bukkit.Sound;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -29,7 +30,7 @@ public class Events implements Listener {
         this.plugin = plugin;
     }
 
-    // Chat prompt for objectives
+    // Chat prompt for objectives & seeds
     @EventHandler
     public void onChat(AsyncPlayerChatEvent event) {
         Player player = event.getPlayer();
@@ -39,29 +40,20 @@ public class Events implements Listener {
             String input = event.getMessage().toUpperCase().replace(" ", "_");
 
             Bukkit.getScheduler().runTask(plugin, () -> {
-                if (type == ObjectiveType.ITEM) {
+                if (type == ObjectiveType.SEED) {
                     try {
-                        Material mat = Material.valueOf(input);
-                        plugin.getGameManager().setObjective(new Objective(mat));
-                        player.sendMessage("§aObjective set to: " + mat.name());
-                    } catch (IllegalArgumentException e) {
-                        player.sendMessage("§cInvalid item name. Try again or type CANCEL.");
+                        long seed = Long.parseLong(event.getMessage());
+                        plugin.getGameManager().setCustomSeed(seed);
+                        player.sendMessage("§aTemporary seed set to: " + seed);
+                    } catch (NumberFormatException e) {
+                        player.sendMessage("§cInvalid number. Try again or type CANCEL.");
                         if (input.equals("CANCEL")) ChatPrompt.removePrompt(player.getUniqueId());
                         return;
                     }
-                } else if (type == ObjectiveType.MOB) {
-                    try {
-                        EntityType entity = EntityType.valueOf(input);
-                        plugin.getGameManager().setObjective(new Objective(entity));
-                        player.sendMessage("§aObjective set to: " + entity.name());
-                    } catch (IllegalArgumentException e) {
-                        player.sendMessage("§cInvalid mob name. Try again or type CANCEL.");
-                        if (input.equals("CANCEL")) ChatPrompt.removePrompt(player.getUniqueId());
-                        return;
-                    }
+                    ChatPrompt.removePrompt(player.getUniqueId());
+                    plugin.getGuiManager().openConfigMenu(player); // Go back to config
+                    return;
                 }
-                ChatPrompt.removePrompt(player.getUniqueId());
-                plugin.getGuiManager().openMainMenu(player);
             });
         }
     }
@@ -124,9 +116,15 @@ public class Events implements Listener {
                     player.teleport(plugin.getWorldManager().getGameWorld().getSpawnLocation());
                 }
             } else if (plugin.getGameManager().getRole(player) == Role.HUNTER) {
-                // Relog as a hunter, check if they are in the lobby and need a respawn
-                if (isInLobby(player)) {
-                    // Let's teleport them back to game world to respawn immediately or queue a new cooldown
+                // Check if they have a cooldown still running
+                if (plugin.getGameManager().hasCooldown(player.getUniqueId())) {
+                    player.teleport(plugin.getLobbyLocation());
+                    player.setGameMode(GameMode.SPECTATOR);
+                } else if (!plugin.getGameManager().areHuntersReleased()) {
+                    player.teleport(plugin.getLobbyLocation());
+                    player.setGameMode(GameMode.SPECTATOR);
+                } else if (isInLobby(player)) {
+                    // Let's teleport them back to game world
                     player.teleport(plugin.getWorldManager().getGameWorld().getSpawnLocation());
                     player.setGameMode(GameMode.SURVIVAL);
                     plugin.getTracker().giveCompass(player);
@@ -161,6 +159,9 @@ public class Events implements Listener {
         Player player = event.getEntity();
         Role role = plugin.getGameManager().getRole(player);
 
+        // Play explosion sound for the dying player
+        player.playSound(player.getLocation(), Sound.ENTITY_GENERIC_EXPLODE, 1.0f, 1.0f);
+
         if (role == Role.RUNNER) {
             // Permadeath for runners, handled on respawn, but we also check win condition here
             event.setDeathMessage("§cRunner " + player.getName() + " has died!");
@@ -169,6 +170,7 @@ public class Events implements Listener {
             });
         } else if (role == Role.HUNTER) {
             event.setDeathMessage("§eHunter " + player.getName() + " has died! Cooldown started.");
+            plugin.getGameManager().addHunterCooldown(player.getUniqueId());
         }
     }
 
@@ -186,27 +188,9 @@ public class Events implements Listener {
         } else if (role == Role.HUNTER) {
             event.setRespawnLocation(plugin.getLobbyLocation());
 
-            int cooldown = plugin.getConfig().getInt("cooldowns.hunter-respawn-seconds", 30);
-            player.sendMessage("§cYou are on cooldown for " + cooldown + " seconds.");
-
-            java.util.UUID playerId = player.getUniqueId();
-
             Bukkit.getScheduler().runTask(plugin, () -> {
                 player.setGameMode(GameMode.SPECTATOR); // Wait in lobby
             });
-
-            Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                if (plugin.getGameManager().getState() == GameState.PLAYING) {
-                    Player p = Bukkit.getPlayer(playerId);
-                    if (p != null && p.isOnline()) {
-                        // Respawn in world spawn
-                        p.teleport(plugin.getWorldManager().getGameWorld().getSpawnLocation());
-                        p.setGameMode(GameMode.SURVIVAL);
-                        plugin.getTracker().giveCompass(p);
-                        p.sendMessage("§aYou have respawned!");
-                    }
-                }
-            }, cooldown * 20L);
         }
     }
 

@@ -27,7 +27,8 @@ public class WorldManager {
         deleteGameWorlds();
 
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-            long seed = new Random().nextLong();
+            Long custom = plugin.getGameManager().getCustomSeed();
+            long seed = custom != null ? custom : new Random().nextLong();
 
             Bukkit.getScheduler().runTask(plugin, () -> {
                 // Generate Overworld
