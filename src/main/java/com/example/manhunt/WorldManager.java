@@ -38,11 +38,8 @@ public class WorldManager {
                 gameWorld = overworldCreator.createWorld();
 
                 if (gameWorld != null) {
-                    gameWorld.setGameRule(GameRule.REDUCED_DEBUG_INFO, true); // Locator bar usually is linked to some client stuff, but locatorBar gamerule is custom or maybe from a specific paper setting?
-                    // wait, locatorBar is not a standard gamerule. Wait, "locatorBar" gamerule might be added in newer paper versions, let's use Bukkit.getGameRule or set it if it exists.
-                    // If it's a known gamerule, let's try to set it by name.
-                    // To avoid compile errors if GameRule enum doesn't have it, we use gameWorld.setGameRuleValue("locatorBar", "false") or similar.
-                    gameWorld.setGameRuleValue("locatorBar", "false"); // Old way, but works for custom rules. Or try GameRule.getByName.
+                    gameWorld.setGameRule(GameRule.REDUCED_DEBUG_INFO, true);
+                    gameWorld.setGameRuleValue("locator_bar", "false");
                 }
 
                 // Generate Nether

@@ -127,7 +127,7 @@ public class GameManager {
         for (Map.Entry<UUID, Role> entry : playerRoles.entrySet()) {
             if (entry.getValue() == Role.RUNNER) {
                 Player p = Bukkit.getPlayer(entry.getKey());
-                if (p != null && p.getGameMode() == GameMode.SURVIVAL) {
+                if (p != null && p.isOnline() && !p.isDead() && p.getGameMode() == GameMode.SURVIVAL) {
                     aliveRunnerExists = true;
                     break;
                 }

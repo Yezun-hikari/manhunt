@@ -10,9 +10,14 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.FoodLevelChangeEvent;
+import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerPortalEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.inventory.ItemStack;
@@ -61,6 +66,53 @@ public class Events implements Listener {
         }
     }
 
+    // Lobby Protection
+
+    private boolean isInLobby(Player player) {
+        if (plugin.getLobbyLocation().getWorld() != null) {
+            return player.getWorld().equals(plugin.getLobbyLocation().getWorld());
+        }
+        return false;
+    }
+
+    @EventHandler
+    public void onBlockBreak(BlockBreakEvent event) {
+        if (isInLobby(event.getPlayer()) && plugin.getGameManager().getState() != GameState.PLAYING) {
+            if (!event.getPlayer().hasPermission("manhunt.admin") || event.getPlayer().getGameMode() != GameMode.CREATIVE) {
+                event.setCancelled(true);
+            }
+        }
+    }
+
+    @EventHandler
+    public void onBlockPlace(BlockPlaceEvent event) {
+        if (isInLobby(event.getPlayer()) && plugin.getGameManager().getState() != GameState.PLAYING) {
+            if (!event.getPlayer().hasPermission("manhunt.admin") || event.getPlayer().getGameMode() != GameMode.CREATIVE) {
+                event.setCancelled(true);
+            }
+        }
+    }
+
+    @EventHandler
+    public void onEntityDamage(EntityDamageEvent event) {
+        if (event.getEntity() instanceof Player) {
+            Player player = (Player) event.getEntity();
+            if (isInLobby(player) && plugin.getGameManager().getState() != GameState.PLAYING) {
+                event.setCancelled(true);
+            }
+        }
+    }
+
+    @EventHandler
+    public void onFoodLevelChange(FoodLevelChangeEvent event) {
+        if (event.getEntity() instanceof Player) {
+            Player player = (Player) event.getEntity();
+            if (isInLobby(player) && plugin.getGameManager().getState() != GameState.PLAYING) {
+                event.setCancelled(true);
+            }
+        }
+    }
+
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
@@ -70,6 +122,14 @@ public class Events implements Listener {
                 player.setGameMode(GameMode.SPECTATOR);
                 if (plugin.getWorldManager().getGameWorld() != null) {
                     player.teleport(plugin.getWorldManager().getGameWorld().getSpawnLocation());
+                }
+            } else if (plugin.getGameManager().getRole(player) == Role.HUNTER) {
+                // Relog as a hunter, check if they are in the lobby and need a respawn
+                if (isInLobby(player)) {
+                    // Let's teleport them back to game world to respawn immediately or queue a new cooldown
+                    player.teleport(plugin.getWorldManager().getGameWorld().getSpawnLocation());
+                    player.setGameMode(GameMode.SURVIVAL);
+                    plugin.getTracker().giveCompass(player);
                 }
             }
         } else {
@@ -82,14 +142,31 @@ public class Events implements Listener {
     }
 
     @EventHandler
+    public void onPlayerQuit(PlayerQuitEvent event) {
+        if (plugin.getGameManager().getState() == GameState.PLAYING) {
+            Player player = event.getPlayer();
+            Role role = plugin.getGameManager().getRole(player);
+            if (role == Role.RUNNER) {
+                // A runner left, let's delay 1 tick and check win condition
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    plugin.getGameManager().checkWinCondition();
+                });
+            }
+        }
+    }
+
+    @EventHandler
     public void onPlayerDeath(PlayerDeathEvent event) {
         if (plugin.getGameManager().getState() != GameState.PLAYING) return;
         Player player = event.getEntity();
         Role role = plugin.getGameManager().getRole(player);
 
         if (role == Role.RUNNER) {
-            // Permadeath for runners, handled on respawn
+            // Permadeath for runners, handled on respawn, but we also check win condition here
             event.setDeathMessage("§cRunner " + player.getName() + " has died!");
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                plugin.getGameManager().checkWinCondition();
+            });
         } else if (role == Role.HUNTER) {
             event.setDeathMessage("§eHunter " + player.getName() + " has died! Cooldown started.");
         }
@@ -102,17 +179,21 @@ public class Events implements Listener {
         Role role = plugin.getGameManager().getRole(player);
 
         if (role == Role.RUNNER) {
-            player.setGameMode(GameMode.SPECTATOR);
             event.setRespawnLocation(player.getLocation()); // Respawn where died to spectate
-            plugin.getGameManager().checkWinCondition();
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                player.setGameMode(GameMode.SPECTATOR);
+            });
         } else if (role == Role.HUNTER) {
             event.setRespawnLocation(plugin.getLobbyLocation());
-            player.setGameMode(GameMode.SPECTATOR); // Wait in lobby
 
             int cooldown = plugin.getConfig().getInt("cooldowns.hunter-respawn-seconds", 30);
             player.sendMessage("§cYou are on cooldown for " + cooldown + " seconds.");
 
             java.util.UUID playerId = player.getUniqueId();
+
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                player.setGameMode(GameMode.SPECTATOR); // Wait in lobby
+            });
 
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
                 if (plugin.getGameManager().getState() == GameState.PLAYING) {
