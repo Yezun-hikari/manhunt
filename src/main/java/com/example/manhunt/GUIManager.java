@@ -116,12 +116,13 @@ public class GUIManager implements Listener {
         int currentHeadStart = plugin.getGameManager().getHeadStartSeconds();
         Long currentSeed = plugin.getGameManager().getCustomSeed();
 
-        inv.setItem(10, createGuiItem(Material.RED_DYE, "§c-1 Minute", "Subtracts 60 seconds"));
-        inv.setItem(11, createGuiItem(Material.ORANGE_DYE, "§6-10 Seconds", "Subtracts 10 seconds"));
-        inv.setItem(12, createGuiItem(Material.CLOCK, "§bHead-start: " + currentHeadStart + "s", "Current Timer"));
-        inv.setItem(13, createGuiItem(Material.YELLOW_DYE, "§e+10 Seconds", "Adds 10 seconds"));
-        inv.setItem(14, createGuiItem(Material.LIME_DYE, "§a+1 Minute", "Adds 60 seconds"));
-        inv.setItem(15, createGuiItem(Material.BARRIER, "§cReset Timer", "Resets to default"));
+        inv.setItem(4, createGuiItem(Material.BARRIER, "§cReset Timer", "Resets to default"));
+
+        inv.setItem(11, createGuiItem(Material.RED_DYE, "§c-1 Minute", "Subtracts 60 seconds"));
+        inv.setItem(12, createGuiItem(Material.ORANGE_DYE, "§6-10 Seconds", "Subtracts 10 seconds"));
+        inv.setItem(13, createGuiItem(Material.CLOCK, "§bHead-start: " + currentHeadStart + "s", "Current Timer"));
+        inv.setItem(14, createGuiItem(Material.YELLOW_DYE, "§e+10 Seconds", "Adds 10 seconds"));
+        inv.setItem(15, createGuiItem(Material.LIME_DYE, "§a+1 Minute", "Adds 60 seconds"));
 
         String seedText = currentSeed == null ? "Random" : String.valueOf(currentSeed);
         inv.setItem(22, createGuiItem(Material.GRASS_BLOCK, "§bTemp Seed: " + seedText, "Click to set a custom seed in chat"));
@@ -159,18 +160,24 @@ public class GUIManager implements Listener {
         holder.setInventory(inv);
         Objective obj = plugin.getGameManager().getObjective();
 
-        Material[] easy = {Material.IRON_INGOT, Material.GOLD_INGOT, Material.SLIME_BALL, Material.EMERALD};
-        Material[] medium = {Material.DIAMOND, Material.ENDER_PEARL, Material.GOLDEN_CARROT, Material.TRIDENT};
-        Material[] hard = {Material.NETHERITE_INGOT, Material.TOTEM_OF_UNDYING, Material.ELYTRA, Material.BEACON, Material.ENCHANTED_GOLDEN_APPLE};
+        Material[] items = {
+            Material.IRON_INGOT, Material.GOLD_INGOT, Material.SLIME_BALL, Material.EMERALD, Material.BRAIN_CORAL_BLOCK,
+            Material.DIAMOND, Material.ENDER_PEARL, Material.GOLDEN_CARROT, Material.TRIDENT,
+            Material.NETHERITE_INGOT, Material.TOTEM_OF_UNDYING, Material.ELYTRA, Material.BEACON, Material.ENCHANTED_GOLDEN_APPLE
+        };
 
         int slot = 0;
-        for (Material m : easy) addItemToMenu(inv, slot++, m, "EASY", obj);
-        slot = 9;
-        for (Material m : medium) addItemToMenu(inv, slot++, m, "MEDIUM", obj);
-        slot = 18;
-        for (Material m : hard) addItemToMenu(inv, slot++, m, "HARD", obj);
+        for (Material m : items) {
+            String diff = "EASY";
+            if (slot > 4 && slot <= 8) diff = "MEDIUM";
+            if (slot > 8) diff = "HARD";
 
-        inv.setItem(45, createGuiItem(Material.OAK_DOOR, "§cBack"));
+            addItemToMenu(inv, slot, m, diff, obj);
+            slot++;
+            if (slot == 9) slot = 18; // jump to second item row
+        }
+
+        inv.setItem(53, createGuiItem(Material.OAK_DOOR, "§cBack"));
         player.openInventory(inv);
     }
 
@@ -180,18 +187,24 @@ public class GUIManager implements Listener {
         holder.setInventory(inv);
         Objective obj = plugin.getGameManager().getObjective();
 
-        EntityType[] easy = {EntityType.COW, EntityType.BEE, EntityType.GOAT, EntityType.ARMADILLO, EntityType.PILLAGER};
-        EntityType[] medium = {EntityType.ENDERMAN, EntityType.WITCH, EntityType.SHULKER, EntityType.SLIME};
-        EntityType[] hard = {EntityType.WITHER_SKELETON, EntityType.WITHER, EntityType.ENDER_DRAGON};
+        EntityType[] mobs = {
+            EntityType.COW, EntityType.BEE, EntityType.GOAT, EntityType.ARMADILLO, EntityType.PILLAGER,
+            EntityType.ENDERMAN, EntityType.WITCH, EntityType.SHULKER, EntityType.SLIME, EntityType.ENDERMITE,
+            EntityType.WITHER_SKELETON, EntityType.WITHER, EntityType.ENDER_DRAGON
+        };
 
         int slot = 0;
-        for (EntityType m : easy) addMobToMenu(inv, slot++, m, "EASY", obj);
-        slot = 9;
-        for (EntityType m : medium) addMobToMenu(inv, slot++, m, "MEDIUM", obj);
-        slot = 18;
-        for (EntityType m : hard) addMobToMenu(inv, slot++, m, "HARD", obj);
+        for (EntityType m : mobs) {
+            String diff = "EASY";
+            if (slot > 4 && slot <= 9) diff = "MEDIUM";
+            if (slot > 9) diff = "HARD";
 
-        inv.setItem(45, createGuiItem(Material.OAK_DOOR, "§cBack"));
+            addMobToMenu(inv, slot, m, diff, obj);
+            slot++;
+            if (slot == 9) slot = 18; // jump to second mob row
+        }
+
+        inv.setItem(53, createGuiItem(Material.OAK_DOOR, "§cBack"));
         player.openInventory(inv);
     }
 
@@ -200,24 +213,31 @@ public class GUIManager implements Listener {
         ItemStack item = createGuiItem(m, "§b" + m.name(), "§7Difficulty: " + diff, "§eRequired: " + req, "§7Left-Click: +1", "§7Right-Click: -1");
         if (req > 0) addGlow(item);
         inv.setItem(slot, item);
-        inv.setItem(slot + 27, createGuiItem(req > 0 ? Material.LIME_STAINED_GLASS_PANE : Material.GRAY_STAINED_GLASS_PANE, "§7Status Indicator"));
+        inv.setItem(slot + 9, createGuiItem(req > 0 ? Material.LIME_STAINED_GLASS_PANE : Material.GRAY_STAINED_GLASS_PANE, "§7Status Indicator"));
     }
 
     private void addMobToMenu(Inventory inv, int slot, EntityType m, String diff, Objective obj) {
         Material display = Material.ZOMBIE_HEAD;
         if (m == EntityType.COW) display = Material.BEEF;
         else if (m == EntityType.BEE) display = Material.HONEYCOMB;
+        else if (m == EntityType.GOAT) display = Material.GOAT_HORN;
+        else if (m == EntityType.ARMADILLO) display = Material.ARMADILLO_SCUTE;
+        else if (m == EntityType.PILLAGER) display = Material.CROSSBOW;
         else if (m == EntityType.ENDERMAN) display = Material.ENDER_PEARL;
-        else if (m == EntityType.WITHER) display = Material.WITHER_SKELETON_SKULL;
+        else if (m == EntityType.WITCH) display = Material.POTION;
+        else if (m == EntityType.SHULKER) display = Material.SHULKER_SHELL;
+        else if (m == EntityType.SLIME) display = Material.SLIME_BALL;
+        else if (m == EntityType.ENDERMITE) display = Material.END_STONE;
+        else if (m == EntityType.WITHER_SKELETON) display = Material.WITHER_SKELETON_SKULL;
+        else if (m == EntityType.WITHER) display = Material.NETHER_STAR;
         else if (m == EntityType.ENDER_DRAGON) display = Material.DRAGON_HEAD;
-        // fallback
         else display = Material.PAPER;
 
         int req = obj != null ? obj.getMobRequirement(m) : 0;
         ItemStack item = createGuiItem(display, "§c" + m.name(), "§7Difficulty: " + diff, "§eRequired: " + req, "§7Left-Click: +1", "§7Right-Click: -1");
         if (req > 0) addGlow(item);
         inv.setItem(slot, item);
-        inv.setItem(slot + 27, createGuiItem(req > 0 ? Material.LIME_STAINED_GLASS_PANE : Material.GRAY_STAINED_GLASS_PANE, "§7Status Indicator"));
+        inv.setItem(slot + 9, createGuiItem(req > 0 ? Material.LIME_STAINED_GLASS_PANE : Material.GRAY_STAINED_GLASS_PANE, "§7Status Indicator"));
     }
 
     public void openChatPromptMode(Player player, ObjectiveType type) {
@@ -329,7 +349,7 @@ public class GUIManager implements Listener {
             Material m = clicked.getType();
             if (m != Material.LIME_STAINED_GLASS_PANE && m != Material.GRAY_STAINED_GLASS_PANE && m != Material.OAK_DOOR) {
                 Objective obj = plugin.getGameManager().getObjective();
-                if (obj != null) {
+                if (obj != null && clicked.hasItemMeta() && clicked.getItemMeta().hasDisplayName()) {
                     // Extract material name from display name (stripping colors)
                     String name = clicked.getItemMeta().getDisplayName().substring(2);
                     try {
@@ -345,7 +365,7 @@ public class GUIManager implements Listener {
             Material m = clicked.getType();
             if (m != Material.LIME_STAINED_GLASS_PANE && m != Material.GRAY_STAINED_GLASS_PANE && m != Material.OAK_DOOR) {
                 Objective obj = plugin.getGameManager().getObjective();
-                if (obj != null) {
+                if (obj != null && clicked.hasItemMeta() && clicked.getItemMeta().hasDisplayName()) {
                     String name = clicked.getItemMeta().getDisplayName().substring(2);
                     try {
                         EntityType target = EntityType.valueOf(name);
