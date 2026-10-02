@@ -43,6 +43,7 @@ public class ManhuntCommand implements CommandExecutor {
             plugin.getConfig().set("lobby.yaw", loc.getYaw());
             plugin.getConfig().set("lobby.pitch", loc.getPitch());
             plugin.saveConfig();
+            loc.getWorld().setGameRule(org.bukkit.GameRule.DO_MOB_SPAWNING, false);
             player.sendMessage("§aLobby location set!");
             return true;
         }

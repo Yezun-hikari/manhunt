@@ -42,6 +42,12 @@ public class Main extends JavaPlugin {
         // Start compass update task
         Bukkit.getScheduler().runTaskTimer(this, () -> tracker.updateCompasses(), 20L, 20L);
 
+        // Set Lobby world gamerule
+        World lobby = getLobbyLocation().getWorld();
+        if (lobby != null) {
+            lobby.setGameRule(org.bukkit.GameRule.DO_MOB_SPAWNING, false);
+        }
+
         getLogger().info("Manhunt plugin enabled!");
     }
 

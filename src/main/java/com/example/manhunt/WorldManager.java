@@ -24,22 +24,26 @@ public class WorldManager {
     }
 
     public void generateWorld(Runnable onComplete) {
+        // Kick players and unload sync first
+        unloadAndDeleteSync(WORLD_NAME);
+        unloadAndDeleteSync(WORLD_NETHER);
+        unloadAndDeleteSync(WORLD_THE_END);
+
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-            // Delete old worlds if they exist (sync wait for async IO safely)
-            // But we can just do deleteDirectory here. Unload must be sync.
+            // Delete folders asynchronously to ensure IO is completed before new world creation
+            deleteFolderAsync(WORLD_NAME);
+            deleteFolderAsync(WORLD_NETHER);
+            deleteFolderAsync(WORLD_THE_END);
+
+            // Wait for file system locks just in case
+            try { Thread.sleep(1000); } catch (InterruptedException e) {}
+
+            Long custom = plugin.getGameManager().getCustomSeed();
+            long seed = custom != null ? custom : new Random().nextLong();
+
             Bukkit.getScheduler().runTask(plugin, () -> {
-                deleteGameWorlds();
-
-                Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-                    // Wait for file system locks just in case
-                    try { Thread.sleep(500); } catch (InterruptedException e) {}
-
-                    Long custom = plugin.getGameManager().getCustomSeed();
-                    long seed = custom != null ? custom : new Random().nextLong();
-
-                    Bukkit.getScheduler().runTask(plugin, () -> {
-                        // Generate Overworld
-                        WorldCreator overworldCreator = new WorldCreator(WORLD_NAME);
+                // Generate Overworld
+                WorldCreator overworldCreator = new WorldCreator(WORLD_NAME);
                 overworldCreator.seed(seed);
                 overworldCreator.environment(World.Environment.NORMAL);
                 overworldCreator.type(WorldType.NORMAL);
@@ -68,8 +72,6 @@ public class WorldManager {
                 if (onComplete != null) {
                     onComplete.run();
                 }
-                    });
-                });
             });
         });
     }
@@ -79,21 +81,29 @@ public class WorldManager {
     }
 
     public void deleteGameWorlds() {
-        unloadAndDelete(WORLD_NAME);
-        unloadAndDelete(WORLD_NETHER);
-        unloadAndDelete(WORLD_THE_END);
+        unloadAndDeleteSync(WORLD_NAME);
+        unloadAndDeleteSync(WORLD_NETHER);
+        unloadAndDeleteSync(WORLD_THE_END);
+
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            deleteFolderAsync(WORLD_NAME);
+            deleteFolderAsync(WORLD_NETHER);
+            deleteFolderAsync(WORLD_THE_END);
+        });
     }
 
-    private void unloadAndDelete(String name) {
+    private void unloadAndDeleteSync(String name) {
         World world = Bukkit.getWorld(name);
         if (world != null) {
-            // Kick players out
+            // Kick players out to lobby immediately
             for (Player p : world.getPlayers()) {
                 p.teleport(plugin.getLobbyLocation());
             }
-            Bukkit.unloadWorld(world, false);
+            Bukkit.unloadWorld(world, false); // false = do not save chunks!
         }
+    }
 
+    private void deleteFolderAsync(String name) {
         File worldFolder = new File(Bukkit.getWorldContainer(), name);
         if (worldFolder.exists()) {
             deleteDirectory(worldFolder);
