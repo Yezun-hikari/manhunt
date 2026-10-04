@@ -10,89 +10,119 @@ import org.bukkit.Difficulty;
 
 import java.io.File;
 import java.util.Random;
+import java.util.UUID;
 
 public class WorldManager {
     private final Main plugin;
-    private final String WORLD_NAME = "manhunt_world";
-    private final String WORLD_NETHER = "manhunt_world_nether";
-    private final String WORLD_THE_END = "manhunt_world_the_end";
 
-    private World gameWorld;
+    private String currentOverworldName;
+    private String currentNetherName;
+    private String currentEndName;
+
+    private File currentOverworldFolder;
+    private File currentNetherFolder;
+    private File currentEndFolder;
 
     public WorldManager(Main plugin) {
         this.plugin = plugin;
     }
 
     public void generateWorld(Runnable onComplete) {
+        // Capture old folders before unloading
+        File oldOverworldFolder = currentOverworldFolder;
+        File oldNetherFolder = currentNetherFolder;
+        File oldEndFolder = currentEndFolder;
+
         // Kick players and unload sync first
-        unloadAndDeleteSync(WORLD_NAME);
-        unloadAndDeleteSync(WORLD_NETHER);
-        unloadAndDeleteSync(WORLD_THE_END);
+        unloadSync(currentOverworldName);
+        unloadSync(currentNetherName);
+        unloadSync(currentEndName);
 
+        // Delete old folders asynchronously
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-            // Delete folders asynchronously to ensure IO is completed before new world creation
-            deleteFolderAsync(WORLD_NAME);
-            deleteFolderAsync(WORLD_NETHER);
-            deleteFolderAsync(WORLD_THE_END);
-
-            // Wait for file system locks just in case
-            try { Thread.sleep(1000); } catch (InterruptedException e) {}
-
-            Long custom = plugin.getGameManager().getCustomSeed();
-            long seed = custom != null ? custom : new Random().nextLong();
-
-            Bukkit.getScheduler().runTask(plugin, () -> {
-                // Generate Overworld
-                WorldCreator overworldCreator = new WorldCreator(WORLD_NAME);
-                overworldCreator.seed(seed);
-                overworldCreator.environment(World.Environment.NORMAL);
-                overworldCreator.type(WorldType.NORMAL);
-                gameWorld = overworldCreator.createWorld();
-
-                if (gameWorld != null) {
-                    gameWorld.setGameRule(GameRule.REDUCED_DEBUG_INFO, true);
-                    gameWorld.setGameRuleValue("locator_bar", "false");
-                    gameWorld.setDifficulty(Difficulty.NORMAL);
-                }
-
-                // Generate Nether
-                WorldCreator netherCreator = new WorldCreator(WORLD_NETHER);
-                netherCreator.seed(seed);
-                netherCreator.environment(World.Environment.NETHER);
-                World nether = netherCreator.createWorld();
-                if (nether != null) nether.setDifficulty(Difficulty.NORMAL);
-
-                // Generate End
-                WorldCreator endCreator = new WorldCreator(WORLD_THE_END);
-                endCreator.seed(seed);
-                endCreator.environment(World.Environment.THE_END);
-                World end = endCreator.createWorld();
-                if (end != null) end.setDifficulty(Difficulty.NORMAL);
-
-                if (onComplete != null) {
-                    onComplete.run();
-                }
-            });
+            deleteFolderAsync(oldOverworldFolder);
+            deleteFolderAsync(oldNetherFolder);
+            deleteFolderAsync(oldEndFolder);
         });
+
+        // Generate new ID and names
+        String id = UUID.randomUUID().toString().substring(0, 8);
+        currentOverworldName = "manhunt_" + id;
+        currentNetherName = "manhunt_" + id + "_nether";
+        currentEndName = "manhunt_" + id + "_the_end";
+
+        Long custom = plugin.getGameManager().getCustomSeed();
+        long seed = custom != null ? custom : new Random().nextLong();
+
+        // Generate Overworld
+        WorldCreator overworldCreator = new WorldCreator(currentOverworldName);
+        overworldCreator.seed(seed);
+        overworldCreator.environment(World.Environment.NORMAL);
+        overworldCreator.type(WorldType.NORMAL);
+        World gameWorld = overworldCreator.createWorld();
+
+        if (gameWorld != null) {
+            gameWorld.setGameRule(GameRule.REDUCED_DEBUG_INFO, true);
+            gameWorld.setGameRuleValue("locator_bar", "false");
+            gameWorld.setDifficulty(Difficulty.NORMAL);
+            currentOverworldFolder = gameWorld.getWorldFolder();
+        }
+
+        // Generate Nether
+        WorldCreator netherCreator = new WorldCreator(currentNetherName);
+        netherCreator.seed(seed);
+        netherCreator.environment(World.Environment.NETHER);
+        World nether = netherCreator.createWorld();
+        if (nether != null) {
+            nether.setDifficulty(Difficulty.NORMAL);
+            currentNetherFolder = nether.getWorldFolder();
+        }
+
+        // Generate End
+        WorldCreator endCreator = new WorldCreator(currentEndName);
+        endCreator.seed(seed);
+        endCreator.environment(World.Environment.THE_END);
+        World end = endCreator.createWorld();
+        if (end != null) {
+            end.setDifficulty(Difficulty.NORMAL);
+            currentEndFolder = end.getWorldFolder();
+        }
+
+        if (onComplete != null) {
+            onComplete.run();
+        }
     }
 
     public World getGameWorld() {
-        return gameWorld;
+        if (currentOverworldName == null) return null;
+        return Bukkit.getWorld(currentOverworldName);
     }
 
     public void deleteGameWorlds() {
-        unloadAndDeleteSync(WORLD_NAME);
-        unloadAndDeleteSync(WORLD_NETHER);
-        unloadAndDeleteSync(WORLD_THE_END);
+        File oldOverworldFolder = currentOverworldFolder;
+        File oldNetherFolder = currentNetherFolder;
+        File oldEndFolder = currentEndFolder;
+
+        unloadSync(currentOverworldName);
+        unloadSync(currentNetherName);
+        unloadSync(currentEndName);
 
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-            deleteFolderAsync(WORLD_NAME);
-            deleteFolderAsync(WORLD_NETHER);
-            deleteFolderAsync(WORLD_THE_END);
+            deleteFolderAsync(oldOverworldFolder);
+            deleteFolderAsync(oldNetherFolder);
+            deleteFolderAsync(oldEndFolder);
         });
+
+        currentOverworldName = null;
+        currentNetherName = null;
+        currentEndName = null;
+        currentOverworldFolder = null;
+        currentNetherFolder = null;
+        currentEndFolder = null;
     }
 
-    private void unloadAndDeleteSync(String name) {
+    private void unloadSync(String name) {
+        if (name == null) return;
         World world = Bukkit.getWorld(name);
         if (world != null) {
             // Kick players out to lobby immediately
@@ -103,10 +133,9 @@ public class WorldManager {
         }
     }
 
-    private void deleteFolderAsync(String name) {
-        File worldFolder = new File(Bukkit.getWorldContainer(), name);
-        if (worldFolder.exists()) {
-            deleteDirectory(worldFolder);
+    private void deleteFolderAsync(File folder) {
+        if (folder != null && folder.exists()) {
+            deleteDirectory(folder);
         }
     }
 
