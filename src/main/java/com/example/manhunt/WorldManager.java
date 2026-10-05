@@ -9,8 +9,15 @@ import org.bukkit.entity.Player;
 import org.bukkit.Difficulty;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.FileVisitResult;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Random;
 import java.util.UUID;
+import java.util.logging.Level;
 
 public class WorldManager {
     private final Main plugin;
@@ -38,12 +45,10 @@ public class WorldManager {
         unloadSync(currentNetherName);
         unloadSync(currentEndName);
 
-        // Delete old folders asynchronously
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-            deleteFolderAsync(oldOverworldFolder);
-            deleteFolderAsync(oldNetherFolder);
-            deleteFolderAsync(oldEndFolder);
-        });
+        // Delete old folders asynchronously with retry mechanism
+        if (oldOverworldFolder != null || oldNetherFolder != null || oldEndFolder != null) {
+            deleteFoldersWithRetry(oldOverworldFolder, oldNetherFolder, oldEndFolder, 0);
+        }
 
         // Generate new ID and names
         String id = UUID.randomUUID().toString().substring(0, 8);
@@ -107,11 +112,9 @@ public class WorldManager {
         unloadSync(currentNetherName);
         unloadSync(currentEndName);
 
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-            deleteFolderAsync(oldOverworldFolder);
-            deleteFolderAsync(oldNetherFolder);
-            deleteFolderAsync(oldEndFolder);
-        });
+        if (oldOverworldFolder != null || oldNetherFolder != null || oldEndFolder != null) {
+            deleteFoldersWithRetry(oldOverworldFolder, oldNetherFolder, oldEndFolder, 0);
+        }
 
         currentOverworldName = null;
         currentNetherName = null;
@@ -133,25 +136,73 @@ public class WorldManager {
         }
     }
 
-    private void deleteFolderAsync(File folder) {
-        if (folder != null && folder.exists()) {
-            deleteDirectory(folder);
+    private void deleteFoldersWithRetry(File overworld, File nether, File end, int attempts) {
+        if (attempts >= 6) {
+            plugin.getLogger().warning("Failed to delete old world folders after maximum retries.");
+            return;
         }
+
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            boolean success = true;
+
+            try {
+                if (overworld != null && overworld.exists()) {
+                    success &= deleteDirectoryNIO(overworld.toPath());
+                }
+            } catch (IOException e) {
+                plugin.getLogger().log(Level.WARNING, "IOException while deleting overworld folder. File locks might still be active.", e);
+                success = false;
+            }
+
+            try {
+                if (nether != null && nether.exists()) {
+                    success &= deleteDirectoryNIO(nether.toPath());
+                }
+            } catch (IOException e) {
+                plugin.getLogger().log(Level.WARNING, "IOException while deleting nether folder. File locks might still be active.", e);
+                success = false;
+            }
+
+            try {
+                if (end != null && end.exists()) {
+                    success &= deleteDirectoryNIO(end.toPath());
+                }
+            } catch (IOException e) {
+                plugin.getLogger().log(Level.WARNING, "IOException while deleting end folder. File locks might still be active.", e);
+                success = false;
+            }
+
+            if (!success) {
+                plugin.getLogger().info("Retrying folder deletion in 10 seconds...");
+                // Retry after 10 seconds (200 ticks)
+                Bukkit.getScheduler().runTaskLaterAsynchronously(plugin, () -> {
+                    deleteFoldersWithRetry(overworld, nether, end, attempts + 1);
+                }, 200L);
+            } else {
+                plugin.getLogger().info("Successfully deleted old world folders.");
+            }
+        });
     }
 
-    private boolean deleteDirectory(File path) {
-        if (path.exists()) {
-            File[] files = path.listFiles();
-            if (files != null) {
-                for (File file : files) {
-                    if (file.isDirectory()) {
-                        deleteDirectory(file);
-                    } else {
-                        file.delete();
-                    }
-                }
+    private boolean deleteDirectoryNIO(Path directory) throws IOException {
+        if (!Files.exists(directory)) return true;
+
+        Files.walkFileTree(directory, new SimpleFileVisitor<Path>() {
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                Files.delete(file);
+                return FileVisitResult.CONTINUE;
             }
-        }
-        return path.delete();
+
+            @Override
+            public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
+                if (exc != null) {
+                    throw exc;
+                }
+                Files.delete(dir);
+                return FileVisitResult.CONTINUE;
+            }
+        });
+        return !Files.exists(directory);
     }
 }
