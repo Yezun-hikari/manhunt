@@ -41,13 +41,17 @@ public class WorldManager {
         File oldEndFolder = currentEndFolder;
 
         // Kick players and unload sync first
-        unloadSync(currentOverworldName);
-        unloadSync(currentNetherName);
-        unloadSync(currentEndName);
+        boolean overworldUnloaded = unloadSync(currentOverworldName);
+        boolean netherUnloaded = unloadSync(currentNetherName);
+        boolean endUnloaded = unloadSync(currentEndName);
 
         // Delete old folders asynchronously with retry mechanism
-        if (oldOverworldFolder != null || oldNetherFolder != null || oldEndFolder != null) {
-            deleteFoldersWithRetry(oldOverworldFolder, oldNetherFolder, oldEndFolder, 0);
+        File targetOverworld = overworldUnloaded ? oldOverworldFolder : null;
+        File targetNether = netherUnloaded ? oldNetherFolder : null;
+        File targetEnd = endUnloaded ? oldEndFolder : null;
+
+        if (targetOverworld != null || targetNether != null || targetEnd != null) {
+            deleteFoldersWithRetry(targetOverworld, targetNether, targetEnd, 0);
         }
 
         // Generate new ID and names
@@ -108,12 +112,16 @@ public class WorldManager {
         File oldNetherFolder = currentNetherFolder;
         File oldEndFolder = currentEndFolder;
 
-        unloadSync(currentOverworldName);
-        unloadSync(currentNetherName);
-        unloadSync(currentEndName);
+        boolean overworldUnloaded = unloadSync(currentOverworldName);
+        boolean netherUnloaded = unloadSync(currentNetherName);
+        boolean endUnloaded = unloadSync(currentEndName);
 
-        if (oldOverworldFolder != null || oldNetherFolder != null || oldEndFolder != null) {
-            deleteFoldersWithRetry(oldOverworldFolder, oldNetherFolder, oldEndFolder, 0);
+        File targetOverworld = overworldUnloaded ? oldOverworldFolder : null;
+        File targetNether = netherUnloaded ? oldNetherFolder : null;
+        File targetEnd = endUnloaded ? oldEndFolder : null;
+
+        if (targetOverworld != null || targetNether != null || targetEnd != null) {
+            deleteFoldersWithRetry(targetOverworld, targetNether, targetEnd, 0);
         }
 
         currentOverworldName = null;
@@ -124,16 +132,27 @@ public class WorldManager {
         currentEndFolder = null;
     }
 
-    private void unloadSync(String name) {
-        if (name == null) return;
+    private boolean unloadSync(String name) {
+        if (name == null) return false;
         World world = Bukkit.getWorld(name);
         if (world != null) {
             // Kick players out to lobby immediately
             for (Player p : world.getPlayers()) {
+                if (p.isDead()) {
+                    p.spigot().respawn();
+                }
                 p.teleport(plugin.getLobbyLocation());
             }
-            Bukkit.unloadWorld(world, false); // false = do not save chunks!
+
+            world.setKeepSpawnInMemory(false);
+
+            boolean unloaded = Bukkit.unloadWorld(world, false); // false = do not save chunks!
+            if (!unloaded) {
+                plugin.getLogger().warning("Konnte Welt nicht entladen: " + world.getName());
+            }
+            return unloaded;
         }
+        return false;
     }
 
     private void deleteFoldersWithRetry(File overworld, File nether, File end, int attempts) {
