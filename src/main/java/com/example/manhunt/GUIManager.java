@@ -290,7 +290,7 @@ public class GUIManager implements Listener {
             else if (clicked.getType() == Material.REPEATER) openConfigMenu(player);
             else if (clicked.getType() == Material.EMERALD_BLOCK) {
                 player.closeInventory();
-                plugin.getGameManager().startGame();
+                plugin.getGameManager().startGame(player);
             }
         } else if (title.equals(CONFIG_TITLE)) {
             int current = plugin.getGameManager().getHeadStartSeconds();
