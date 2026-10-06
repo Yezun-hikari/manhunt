@@ -86,11 +86,18 @@ public class GameManager {
                             plugin.getTracker().giveCompass(p);
                         }
                     }
-                    Bukkit.broadcastMessage("§cThe Hunters have been released!");
+                    Bukkit.broadcastMessage("§cDie Hunter wurden freigelassen!");
                 } else {
+                    // Chat countdown logic for runners/spectators
+                    boolean announceChat = currentHeadStart == 120 || currentHeadStart == 60 || currentHeadStart == 30 || currentHeadStart == 20 || currentHeadStart == 10 || currentHeadStart <= 5;
+                    String timeStr = currentHeadStart > 60 ? (currentHeadStart / 60) + " Minuten" : (currentHeadStart == 60 ? "1 Minute" : currentHeadStart + " Sekunden");
+
                     for (Player p : Bukkit.getOnlinePlayers()) {
-                        if (getRole(p) == Role.HUNTER) {
+                        Role role = getRole(p);
+                        if (role == Role.HUNTER) {
                             p.sendActionBar(Component.text("§cReleasing in " + currentHeadStart + "s"));
+                        } else if (announceChat && (role == Role.RUNNER || role == Role.SPECTATOR)) {
+                            p.sendMessage("§cDie Hunter werden in " + timeStr + " freigelassen!");
                         }
                     }
                 }

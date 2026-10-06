@@ -7,6 +7,9 @@ import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.CompassMeta;
+import org.bukkit.boss.BossBar;
+import org.bukkit.boss.BarColor;
+import org.bukkit.boss.BarStyle;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -16,6 +19,8 @@ public class Tracker {
     private final Main plugin;
     // Maps Runner UUID to their last portal location per dimension
     private final Map<UUID, Map<String, Location>> lastPortalLocations = new HashMap<>();
+    // Maps Runner UUID to their BossBar for tracking hunters
+    private final Map<UUID, BossBar> runnerBossBars = new HashMap<>();
 
     public Tracker(Main plugin) {
         this.plugin = plugin;
@@ -33,11 +38,68 @@ public class Tracker {
 
     public void clearPortalData() {
         lastPortalLocations.clear();
+        for (BossBar bar : runnerBossBars.values()) {
+            bar.removeAll();
+        }
+        runnerBossBars.clear();
     }
 
     public void updateCompasses() {
         if (plugin.getGameManager().getState() != GameState.PLAYING) return;
 
+        // --- BossBar Logic for Runners ---
+        if (plugin.getGameManager().areHuntersReleased()) {
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                UUID uuid = player.getUniqueId();
+                if (plugin.getGameManager().getRole(player) == Role.RUNNER) {
+                    Player nearestHunter = null;
+                    double nearestDistance = Double.MAX_VALUE;
+                    boolean sameDimension = false;
+
+                    for (Player hunter : Bukkit.getOnlinePlayers()) {
+                        if (plugin.getGameManager().getRole(hunter) == Role.HUNTER && !plugin.getGameManager().hasCooldown(hunter.getUniqueId())) {
+                            if (player.getWorld().equals(hunter.getWorld())) {
+                                double dist = player.getLocation().distanceSquared(hunter.getLocation());
+                                if (dist < nearestDistance) {
+                                    nearestDistance = dist;
+                                    nearestHunter = hunter;
+                                    sameDimension = true;
+                                }
+                            } else if (!sameDimension) {
+                                // Only consider cross-dimension if we haven't found a same-dimension hunter yet
+                                nearestHunter = hunter;
+                            }
+                        }
+                    }
+
+                    BossBar bar = runnerBossBars.computeIfAbsent(uuid, k -> Bukkit.createBossBar("", BarColor.RED, BarStyle.SOLID));
+
+                    if (!bar.getPlayers().contains(player)) {
+                        bar.addPlayer(player);
+                    }
+
+                    if (nearestHunter != null) {
+                        bar.setVisible(true);
+                        if (sameDimension) {
+                            int distMeters = (int) Math.sqrt(nearestDistance);
+                            bar.setTitle("§cNächster Hunter: §e" + nearestHunter.getName() + " §7(§e" + distMeters + "m§7)");
+                        } else {
+                            bar.setTitle("§cNächster Hunter: §e" + nearestHunter.getName());
+                        }
+                    } else {
+                        bar.setVisible(false);
+                    }
+                } else if (runnerBossBars.containsKey(uuid)) {
+                    // Player is no longer a runner, remove and hide bar
+                    BossBar bar = runnerBossBars.remove(uuid);
+                    if (bar != null) {
+                        bar.removeAll();
+                    }
+                }
+            }
+        }
+
+        // --- Compass Logic for Hunters ---
         for (Player hunter : Bukkit.getOnlinePlayers()) {
             if (plugin.getGameManager().getRole(hunter) != Role.HUNTER) continue;
 
