@@ -137,14 +137,7 @@ public class GameManager {
             return;
         }
 
-        boolean hasRunner = false;
-        for (Role role : playerRoles.values()) {
-            if (role == Role.RUNNER) {
-                hasRunner = true;
-                break;
-            }
-        }
-        if (!hasRunner) {
+        if (!playerRoles.containsValue(Role.RUNNER)) {
             if (initiator != null) initiator.sendMessage("§cCannot start game: At least one runner must be selected!");
             return;
         }
