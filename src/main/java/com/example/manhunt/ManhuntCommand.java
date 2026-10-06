@@ -27,14 +27,11 @@ public class ManhuntCommand implements CommandExecutor {
         }
 
         if (args.length == 0) {
-            player.sendMessage("§cUsage: /manhunt <admin|setlobby>");
+            plugin.getGuiManager().openMainMenu(player);
             return true;
         }
 
-        if (args[0].equalsIgnoreCase("admin")) {
-            plugin.getGuiManager().openMainMenu(player);
-            return true;
-        } else if (args[0].equalsIgnoreCase("setlobby")) {
+        if (args[0].equalsIgnoreCase("setlobby")) {
             Location loc = player.getLocation();
             plugin.getConfig().set("lobby.world", loc.getWorld().getName());
             plugin.getConfig().set("lobby.x", loc.getX());
