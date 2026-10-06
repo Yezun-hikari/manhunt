@@ -8,7 +8,7 @@ commands:
   manhunt:
     description: Manhunt commands
     permission: manhunt.admin
-    usage: /manhunt <admin|setlobby>
+    usage: /manhunt [setlobby]
 permissions:
   manhunt.admin:
     description: Allows access to manhunt admin commands
