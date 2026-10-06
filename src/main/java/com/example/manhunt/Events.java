@@ -183,6 +183,9 @@ public class Events implements Listener {
         } else if (role == Role.HUNTER) {
             event.setDeathMessage("§eHunter " + player.getName() + " has died! Cooldown started.");
             plugin.getGameManager().addHunterCooldown(player.getUniqueId());
+
+            // Remove compass from drops
+            event.getDrops().removeIf(item -> item != null && item.getType() == Material.COMPASS);
         }
     }
 
