@@ -126,10 +126,19 @@ public class GameManager {
         }
     }
 
-    public void startGame() {
+    public void startGame(Player initiator) {
         if (currentState != GameState.LOBBY) return;
         if (currentObjective == null || !currentObjective.isValid()) {
-            Bukkit.broadcastMessage("§cCannot start game: No objective set!");
+            if (initiator != null) {
+                initiator.sendMessage("§cCannot start game: No objective set!");
+            } else {
+                Bukkit.broadcastMessage("§cCannot start game: No objective set!");
+            }
+            return;
+        }
+
+        if (!playerRoles.containsValue(Role.RUNNER)) {
+            if (initiator != null) initiator.sendMessage("§cCannot start game: At least one runner must be selected!");
             return;
         }
 
