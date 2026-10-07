@@ -208,6 +208,10 @@ public class GameManager {
                 player.setHealth(20);
                 player.setFoodLevel(20);
                 player.setSaturation(5);
+
+                Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                    new RunnerSlotMachine(plugin, player).start();
+                }, 10L);
             } else if (role == Role.HUNTER) {
                 player.getInventory().clear();
                 player.setHealth(20);

@@ -16,6 +16,7 @@ import org.bukkit.event.entity.FoodLevelChangeEvent;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
@@ -252,7 +253,20 @@ public class Events implements Listener {
 
     // Win condition check - Inventory click (e.g., crafting or chest)
     @EventHandler
+    public void onInventoryClose(InventoryCloseEvent event) {
+        if (event.getInventory().getHolder() instanceof SlotMachineHolder) {
+            SlotMachineHolder holder = (SlotMachineHolder) event.getInventory().getHolder();
+            holder.getSlotMachine().finish(true);
+        }
+    }
+
+    @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
+        if (event.getInventory().getHolder() instanceof SlotMachineHolder) {
+            event.setCancelled(true);
+            return;
+        }
+
         if (plugin.getGameManager().getState() != GameState.PLAYING) return;
         if (!(event.getWhoClicked() instanceof Player)) return;
 
