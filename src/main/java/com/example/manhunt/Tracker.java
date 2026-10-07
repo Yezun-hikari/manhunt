@@ -83,8 +83,13 @@ public class Tracker {
                         if (sameDimension) {
                             int distMeters = (int) Math.sqrt(nearestDistance);
                             bar.setTitle("§cNächster Hunter: §e" + nearestHunter.getName() + " §7(§e" + distMeters + "m§7)");
+
+                            // Fill BossBar closer the hunter is (full at 0m, empty at 500m)
+                            double progress = Math.max(0.0, 1.0 - ((double) distMeters / 500.0));
+                            bar.setProgress(progress);
                         } else {
                             bar.setTitle("§cNächster Hunter: §e" + nearestHunter.getName());
+                            bar.setProgress(0.0); // Empty when in different dimension
                         }
                     } else {
                         bar.setVisible(false);
