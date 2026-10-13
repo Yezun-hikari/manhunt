@@ -23,6 +23,8 @@ import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerPortalEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
+import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.inventory.ItemStack;
 
 public class Events implements Listener {
@@ -76,12 +78,23 @@ public class Events implements Listener {
                 event.setCancelled(true);
             }
         }
+
     }
 
     @EventHandler
     public void onBlockPlace(BlockPlaceEvent event) {
         if (isInLobby(event.getPlayer()) && plugin.getGameManager().getState() != GameState.PLAYING) {
             if (!event.getPlayer().hasPermission("manhunt.admin") || event.getPlayer().getGameMode() != GameMode.CREATIVE) {
+                event.setCancelled(true);
+            }
+        }
+    }
+
+    @EventHandler
+    public void onFoodLevelChange(FoodLevelChangeEvent event) {
+        if (event.getEntity() instanceof Player) {
+            Player player = (Player) event.getEntity();
+            if (isInLobby(player) && plugin.getGameManager().getState() != GameState.PLAYING) {
                 event.setCancelled(true);
             }
         }
@@ -95,14 +108,28 @@ public class Events implements Listener {
                 event.setCancelled(true);
             }
         }
-    }
 
-    @EventHandler
-    public void onFoodLevelChange(FoodLevelChangeEvent event) {
-        if (event.getEntity() instanceof Player) {
-            Player player = (Player) event.getEntity();
-            if (isInLobby(player) && plugin.getGameManager().getState() != GameState.PLAYING) {
-                event.setCancelled(true);
+        // Check for hunter damaging runner
+        if (plugin.getGameManager().getState() == GameState.PLAYING) {
+            if (event instanceof org.bukkit.event.entity.EntityDamageByEntityEvent) {
+                org.bukkit.event.entity.EntityDamageByEntityEvent damageEvent = (org.bukkit.event.entity.EntityDamageByEntityEvent) event;
+                if (damageEvent.getEntity() instanceof Player) {
+                    Player damagerPlayer = null;
+                    if (damageEvent.getDamager() instanceof Player) {
+                        damagerPlayer = (Player) damageEvent.getDamager();
+                    } else if (damageEvent.getDamager() instanceof org.bukkit.entity.Projectile) {
+                        org.bukkit.entity.Projectile projectile = (org.bukkit.entity.Projectile) damageEvent.getDamager();
+                        if (projectile.getShooter() instanceof Player) {
+                            damagerPlayer = (Player) projectile.getShooter();
+                        }
+                    }
+
+                    if (damagerPlayer != null) {
+                        if (plugin.getGameManager().getRole(damagerPlayer) == Role.HUNTER && plugin.getGameManager().getRole((Player) damageEvent.getEntity()) == Role.RUNNER) {
+                            plugin.getGameManager().addDamageDealingHunter(damagerPlayer.getUniqueId());
+                        }
+                    }
+                }
             }
         }
     }
@@ -149,6 +176,10 @@ public class Events implements Listener {
                 player.teleport(plugin.getLobbyLocation());
                 player.setGameMode(GameMode.SURVIVAL);
             }
+
+            if (plugin.getGameManager().getRecentWinners().contains(player.getUniqueId())) {
+                plugin.getGameManager().giveCrown(player);
+            }
         }
     }
 
@@ -174,6 +205,9 @@ public class Events implements Listener {
 
         // Play explosion sound for the dying player
         player.playSound(player.getLocation(), Sound.ENTITY_GENERIC_EXPLODE, 1.0f, 1.0f);
+
+        // Keep crown from dropping
+        event.getDrops().removeIf(item -> isCrown(item));
 
         if (role == Role.RUNNER) {
             // Permadeath for runners, handled on respawn, but we also check win condition here
@@ -267,14 +301,51 @@ public class Events implements Listener {
             return;
         }
 
-        if (plugin.getGameManager().getState() != GameState.PLAYING) return;
         if (!(event.getWhoClicked() instanceof Player)) return;
+
+        // Protect crown (even outside of PLAYING state)
+        if (isCrown(event.getCurrentItem()) || isCrown(event.getCursor())) {
+            event.setCancelled(true);
+        }
+        if (event.getHotbarButton() != -1) {
+            ItemStack hotbarItem = event.getWhoClicked().getInventory().getItem(event.getHotbarButton());
+            if (isCrown(hotbarItem)) {
+                event.setCancelled(true);
+            }
+        }
+
+        if (plugin.getGameManager().getState() != GameState.PLAYING) return;
 
         Player player = (Player) event.getWhoClicked();
         if (plugin.getGameManager().getRole(player) == Role.RUNNER) {
             ItemStack clicked = event.getCurrentItem();
             checkItemObjective(player, clicked);
         }
+    }
+
+    @EventHandler
+    public void onInventoryDrag(org.bukkit.event.inventory.InventoryDragEvent event) {
+        if (isCrown(event.getOldCursor()) || isCrown(event.getCursor())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void onPlayerDropItem(org.bukkit.event.player.PlayerDropItemEvent event) {
+        if (isCrown(event.getItemDrop().getItemStack())) {
+            event.setCancelled(true);
+        }
+    }
+
+    private boolean isCrown(ItemStack item) {
+        if (item == null || item.getType() == Material.AIR) return false;
+        if (item.getType() != Material.PAPER) return false;
+        if (!item.hasItemMeta()) return false;
+
+        org.bukkit.inventory.meta.ItemMeta meta = item.getItemMeta();
+        if (!meta.hasCustomModelDataComponent()) return false;
+        org.bukkit.inventory.meta.components.CustomModelDataComponent comp = meta.getCustomModelDataComponent();
+        return comp.getStrings().contains("crown");
     }
 
     private void checkItemObjective(Player player, ItemStack item) {

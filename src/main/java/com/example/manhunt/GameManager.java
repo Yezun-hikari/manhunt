@@ -6,10 +6,17 @@ import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.Material;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.inventory.meta.components.CustomModelDataComponent;
 
 import java.time.Duration;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
+import java.util.List;
 import java.util.UUID;
 
 public class GameManager {
@@ -27,6 +34,9 @@ public class GameManager {
 
     // Maps UUID to remaining cooldown in seconds
     private final Map<UUID, Integer> hunterCooldowns = new HashMap<>();
+
+    private Set<UUID> recentWinners = new HashSet<>();
+    private Set<UUID> damageDealingHunters = new HashSet<>();
 
     public GameManager(Main plugin) {
         this.plugin = plugin;
@@ -133,6 +143,30 @@ public class GameManager {
         }
     }
 
+    public void addDamageDealingHunter(UUID uuid) {
+        damageDealingHunters.add(uuid);
+    }
+
+    public Set<UUID> getRecentWinners() {
+        return recentWinners;
+    }
+
+    public void giveCrown(Player player) {
+        ItemStack crown = new ItemStack(Material.PAPER);
+        ItemMeta meta = crown.getItemMeta();
+        if (meta != null) {
+            CustomModelDataComponent comp = meta.getCustomModelDataComponent();
+            comp.setStrings(List.of("crown"));
+            meta.setCustomModelDataComponent(comp);
+
+            // Set name to empty or "Crown" so it looks better
+            meta.displayName(Component.text("Crown").color(net.kyori.adventure.text.format.NamedTextColor.GOLD));
+
+            crown.setItemMeta(meta);
+        }
+        player.getInventory().setHelmet(crown);
+    }
+
     public void startGame(Player initiator) {
         if (currentState != GameState.LOBBY) return;
         if (currentObjective == null || !currentObjective.isValid()) {
@@ -148,6 +182,9 @@ public class GameManager {
             if (initiator != null) initiator.sendMessage("§cCannot start game: At least one runner must be selected!");
             return;
         }
+
+        recentWinners.clear();
+        damageDealingHunters.clear();
 
         setState(GameState.GENERATING);
         Bukkit.broadcastMessage("§eGenerating world, please wait...");
@@ -174,6 +211,18 @@ public class GameManager {
         boolean runnerWon = winner == Role.RUNNER;
         String winMsg = runnerWon ? "§aRunners won!" : "§cHunters won!";
 
+        recentWinners.clear();
+        for (Map.Entry<UUID, Role> entry : playerRoles.entrySet()) {
+            if (winner == Role.RUNNER && entry.getValue() == Role.RUNNER) {
+                recentWinners.add(entry.getKey());
+            } else if (winner == Role.HUNTER && entry.getValue() == Role.HUNTER) {
+                if (damageDealingHunters.contains(entry.getKey())) {
+                    recentWinners.add(entry.getKey());
+                }
+            }
+        }
+        damageDealingHunters.clear();
+
         Component titleComp = Component.text(winMsg);
         Title title = Title.title(titleComp, Component.empty());
 
@@ -198,6 +247,10 @@ public class GameManager {
             // Reset gamemode
             if (role == Role.RUNNER || role == Role.HUNTER || role == Role.SPECTATOR) {
                 player.setGameMode(GameMode.SURVIVAL);
+            }
+
+            if (recentWinners.contains(player.getUniqueId())) {
+                giveCrown(player);
             }
         }
 
