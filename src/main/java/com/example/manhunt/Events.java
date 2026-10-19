@@ -246,9 +246,6 @@ public class Events implements Listener {
         if (!(event.getEntity() instanceof Player)) return;
 
         Player player = (Player) event.getEntity();
-        if (plugin.getGameManager().getRole(player) == Role.RUNNER) {
-            checkItemObjective(player, event.getItem().getItemStack());
-        }
     }
 
     // Win condition check - Inventory click (e.g., crafting or chest)
@@ -271,46 +268,6 @@ public class Events implements Listener {
         if (!(event.getWhoClicked() instanceof Player)) return;
 
         Player player = (Player) event.getWhoClicked();
-        if (plugin.getGameManager().getRole(player) == Role.RUNNER) {
-            ItemStack clicked = event.getCurrentItem();
-            checkItemObjective(player, clicked);
-        }
     }
 
-    private void checkItemObjective(Player player, ItemStack item) {
-        if (item == null || item.getType() == Material.AIR) return;
-        Objective obj = plugin.getGameManager().getObjective();
-
-        if (obj != null && obj.getType() == ObjectiveType.ITEM) {
-            if (obj.getItemRequirement(item.getType()) > 0) {
-                // Actually wait, for items, do we accumulate pickups?
-                // It's safer to just iterate over all runners inventories and sum up the totals periodically or on event.
-                // Let's do it via task.
-                Bukkit.getScheduler().runTask(plugin, () -> {
-                    boolean won = true;
-                    for (Material mat : org.bukkit.Material.values()) {
-                        if (obj.getItemRequirement(mat) > 0) {
-                            int total = 0;
-                            for (Player p : Bukkit.getOnlinePlayers()) {
-                                if (plugin.getGameManager().getRole(p) == Role.RUNNER && !p.isDead()) {
-                                    for (ItemStack invItem : p.getInventory().getContents()) {
-                                        if (invItem != null && invItem.getType() == mat) {
-                                            total += invItem.getAmount();
-                                        }
-                                    }
-                                }
-                            }
-                            if (total < obj.getItemRequirement(mat)) {
-                                won = false;
-                                break;
-                            }
-                        }
-                    }
-                    if (won) {
-                        plugin.getGameManager().endGame(Role.RUNNER);
-                    }
-                });
-            }
-        }
-    }
 }

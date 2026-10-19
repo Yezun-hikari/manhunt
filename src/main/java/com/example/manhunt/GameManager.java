@@ -74,6 +74,8 @@ public class GameManager {
 
     private void tick() {
         if (currentState == GameState.PLAYING) {
+            checkItemObjectivePeriodic();
+
             // Handle head start countdown
             if (!huntersReleased && currentHeadStart > 0) {
                 currentHeadStart--;
@@ -133,6 +135,33 @@ public class GameManager {
         }
     }
 
+
+    private void checkItemObjectivePeriodic() {
+        if (currentObjective != null && currentObjective.getType() == ObjectiveType.ITEM) {
+            boolean won = true;
+            for (org.bukkit.Material mat : org.bukkit.Material.values()) {
+                if (currentObjective.getItemRequirement(mat) > 0) {
+                    int total = 0;
+                    for (Player p : Bukkit.getOnlinePlayers()) {
+                        if (getRole(p) == Role.RUNNER && !p.isDead()) {
+                            for (org.bukkit.inventory.ItemStack invItem : p.getInventory().getContents()) {
+                                if (invItem != null && invItem.getType() == mat) {
+                                    total += invItem.getAmount();
+                                }
+                            }
+                        }
+                    }
+                    if (total < currentObjective.getItemRequirement(mat)) {
+                        won = false;
+                        break;
+                    }
+                }
+            }
+            if (won) {
+                endGame(Role.RUNNER);
+            }
+        }
+    }
     public void startGame(Player initiator) {
         if (currentState != GameState.LOBBY) return;
         if (currentObjective == null || !currentObjective.isValid()) {
@@ -152,18 +181,20 @@ public class GameManager {
         setState(GameState.GENERATING);
         Bukkit.broadcastMessage("§eGenerating world, please wait...");
         plugin.getWorldManager().generateWorld(() -> {
-            setState(GameState.PLAYING);
-            huntersReleased = (headStartSeconds <= 0);
-            currentHeadStart = headStartSeconds;
+            Bukkit.broadcastMessage("§aManhunt started! Teleporting in 2 seconds...");
 
-            teleportPlayersToGame();
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                setState(GameState.PLAYING);
+                huntersReleased = (headStartSeconds <= 0);
+                currentHeadStart = headStartSeconds;
 
-            Bukkit.broadcastMessage("§aManhunt started!");
-            if (!huntersReleased) {
-                Bukkit.broadcastMessage("§eHunters will be released in " + headStartSeconds + " seconds.");
-            }
+                teleportPlayersToGame();
 
-            updateScoreboard();
+                if (!huntersReleased) {
+                    Bukkit.broadcastMessage("§eHunters will be released in " + headStartSeconds + " seconds.");
+                }
+                updateScoreboard();
+            }, 40L);
         });
     }
 
@@ -215,37 +246,46 @@ public class GameManager {
     }
 
     private void teleportPlayersToGame() {
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            Role role = getRole(player);
-            if (role == Role.RUNNER) {
-                player.teleport(plugin.getWorldManager().getGameWorld().getSpawnLocation());
-                player.getInventory().clear();
-                player.setGameMode(GameMode.SURVIVAL);
-                player.setHealth(20);
-                player.setFoodLevel(20);
-                player.setSaturation(5);
+        long delayForSlotMachine = 10L;
 
-                Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                    new RunnerSlotMachine(plugin, player).start();
-                }, 10L);
-            } else if (role == Role.HUNTER) {
-                player.getInventory().clear();
-                player.setHealth(20);
-                player.setFoodLevel(20);
-                player.setSaturation(5);
-                if (huntersReleased) {
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            try {
+                Role role = getRole(player);
+                if (role == Role.RUNNER) {
                     player.teleport(plugin.getWorldManager().getGameWorld().getSpawnLocation());
+                    player.getInventory().clear();
                     player.setGameMode(GameMode.SURVIVAL);
-                    plugin.getTracker().giveCompass(player);
+                    player.setHealth(20);
+                    player.setFoodLevel(20);
+                    player.setSaturation(5);
+
+                    long currentDelay = delayForSlotMachine;
+                    Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                        if (player.isOnline()) {
+                            new RunnerSlotMachine(plugin, player).start();
+                        }
+                    }, currentDelay);
+                    delayForSlotMachine += 10L; // Stagger by 10 ticks (0.5s) per runner
+                } else if (role == Role.HUNTER) {
+                    player.getInventory().clear();
+                    player.setHealth(20);
+                    player.setFoodLevel(20);
+                    player.setSaturation(5);
+                    if (huntersReleased) {
+                        player.teleport(plugin.getWorldManager().getGameWorld().getSpawnLocation());
+                        player.setGameMode(GameMode.SURVIVAL);
+                        plugin.getTracker().giveCompass(player);
+                    } else {
+                        player.teleport(plugin.getLobbyLocation());
+                        player.setGameMode(GameMode.SPECTATOR);
+                    }
                 } else {
-                    // Stay in lobby
-                    player.teleport(plugin.getLobbyLocation());
-                    player.setGameMode(GameMode.SPECTATOR); // so they can't break anything
+                    player.teleport(plugin.getWorldManager().getGameWorld().getSpawnLocation());
+                    player.setGameMode(GameMode.SPECTATOR);
                 }
-            } else {
-                // Spectators
-                player.teleport(plugin.getWorldManager().getGameWorld().getSpawnLocation());
-                player.setGameMode(GameMode.SPECTATOR);
+            } catch (Exception e) {
+                plugin.getLogger().severe("Error teleporting player " + player.getName() + ": " + e.getMessage());
+                e.printStackTrace();
             }
         }
     }
